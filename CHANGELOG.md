@@ -2,6 +2,19 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [0.2.0] - 2026-10-05
+### Added
+- Implementação de documentação Swagger/OpenAPI detalhada para todos os endpoints da API.
+- Adição de metadados globais à aplicação (descrição, versão e contato).
+- Descrições detalhadas e exemplos de valores para todos os campos dos modelos Pydantic.
+- Refatoração dos modelos de domínio para separar `AppointmentCreate` de `Appointment`, garantindo que o `id` do agendamento seja tratado como somente leitura/gerado automaticamente no Swagger.
+- Atualização do `README.md` com a tabela de endpoints e guia de uso da documentação interativa.
+- Implementação de versionamento dinâmico: a versão da API agora é extraída automaticamente do CHANGELOG.md.
+
+### Changed
+- Atualização da lógica de `AppointmentService` para suportar os novos modelos de criação e atualização, mantendo a integridade dos dados de sincronização.
+- Remoção de informações de contato de suporte nos metadados da API, adequando-a para uso interno.
+
 ## [0.1.1] - 2026-10-01
 ### Changed
 - Substituição de todos os comandos `print` por um sistema de logs profissional utilizando a biblioteca `logging` do Python.
@@ -23,7 +36,7 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 
 ## Resumo Atual do Sistema
 O código implementa atualmente o núcleo lógico de um sistema de agendamentos. Ele permite:
-1. **Gestão de Agendamentos**: Criação, leitura, atualização e exclusão de horários, com validações automáticas para impedir agendamentos em datas passadas ou a marcação de dois clientes no mesmo horário (sobreposição).
+1. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão de horários, com validações automáticas para impedir agendamentos em datas passadas ou a marcação de dois clientes no mesmo horário (sobreposição).
 2. **Sincronização com Google Agenda (Mock)**: Ao criar ou atualizar um agendamento, o sistema simula a criação de um evento no Google Agenda.
 3. **Rastreamento de Status**: O sistema consegue consultar (via mock) se o cliente confirmou, recusou ou está pendente no convite do Google Agenda, atualizando essa informação no banco de dados interno.
 4. **Persistência Flexível**: O sistema verifica automaticamente as variáveis de ambiente; se as credenciais do Supabase não forem encontradas, ele utiliza memória RAM para salvar os dados, garantindo que o projeto seja executável imediatamente.

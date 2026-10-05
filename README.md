@@ -59,16 +59,22 @@ A documentação interativa do Swagger pode ser acessada em `http://localhost:80
 - **Camada de Serviço**: Lógica de negócio, validações (sobreposição de horários e datas passadas).
 - **Camada de Infraestrutura**: Interfaces mockáveis para Banco de Dados (Supabase/Memória) e Agenda (Google).
 
-## Endpoints
+## Documentação da API
 
-| Método | Rota | Descrição |
-| :--- | :--- | :--- |
-| `POST` | `/agendamentos` | Registrar um novo agendamento |
-| `GET` | `/agendamentos` | Listar todos os agendamentos |
-| `GET` | `/agendamentos/{id}` | Obter detalhes de um agendamento |
-| `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente |
-| `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento |
-| `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronização com o Google Agenda |
+Abaixo estão os endpoints disponíveis. Para testar, utilize o Swagger UI em `/docs`.
+
+### 📅 Agendamentos
+
+| Método | Rota | Descrição | Parâmetros Principais |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/agendamentos` | Registrar um novo agendamento | `client` (nome, email, tel), `service`, `start_time`, `duration_minutes` |
+| `GET` | `/agendamentos` | Listar todos os agendamentos | Nenhum |
+| `GET` | `/agendamentos/{id}` | Obter detalhes de um agendamento | `id` (Path) |
+| `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente | `id` (Path), Corpo do agendamento |
+| `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento | `id` (Path) |
+| `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronização com o Google Agenda | `id` (Path) |
+
+**Observação:** O campo `id` do agendamento é gerado automaticamente pelo sistema e não deve ser enviado na requisição de criação (`POST`).
 
 ## Aviso de Segurança
 Credenciais sensíveis (`.env`) são gerenciadas via `.gitignore`. Nunca envie suas chaves para o repositório.

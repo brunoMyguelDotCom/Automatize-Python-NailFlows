@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import HTTPException
 
-from app.domain.models import Appointment, SyncStatus
+from app.domain.models import Appointment, SyncStatus, AppointmentCreate
 from app.infrastructure.database.base import BaseDatabase
 from app.infrastructure.calendar.base import BaseCalendar
 
@@ -29,7 +29,9 @@ class AppointmentService:
                     detail=f"Appointment overlaps with an existing one (ID: {existing.id})"
                 )
 
-    def create_appointment(self, appointment: Appointment) -> Appointment:
+    def create_appointment(self, appointment_data: AppointmentCreate) -> Appointment:
+        # Convert AppointmentCreate to Appointment to generate ID
+        appointment = Appointment(**appointment_data.model_dump())
         self._validate_appointment(appointment)
 
         # Save to DB
@@ -49,9 +51,20 @@ class AppointmentService:
     def list_appointments(self) -> List[Appointment]:
         return self.db.list_all()
 
-    def update_appointment(self, appointment_id: str, updated_appointment: Appointment) -> Appointment:
-        # Update the ID to match the existing one
+    def update_appointment(self, appointment_id: str, updated_data: AppointmentCreate) -> Appointment:
+        # Fetch existing to maintain sync_state if not provided or to merge
+        existing = self.get_appointment(appointment_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
+        # Create Appointment model with the existing ID
+        updated_appointment = Appointment(**updated_data.model_dump())
         updated_appointment.id = appointment_id
+
+        # Preserve existing sync_state if it was not explicitly changed in updated_data
+        # (Depending on requirements, you might want to allow updating sync_state via API)
+        # For now, we merge the ID and validate.
+
         self._validate_appointment(updated_appointment, ignore_id=appointment_id)
 
         # Save to DB
