@@ -1,5 +1,5 @@
-from app.infrastructure.database.base import BaseDatabase
-from app.domain.models import Appointment
+from app.infrastructure.database.base import BaseClientDatabase, BaseDatabase
+from app.domain.models import Appointment, ClientRecord
 from typing import List, Optional, Dict
 
 class InMemoryDatabase(BaseDatabase):
@@ -27,3 +27,27 @@ class InMemoryDatabase(BaseDatabase):
             del self._storage[appointment_id]
             return True
         return False
+
+
+class InMemoryClientDatabase(BaseClientDatabase):
+    def __init__(self):
+        self._storage: Dict[str, ClientRecord] = {}
+
+    def create(self, client: ClientRecord) -> ClientRecord:
+        self._storage[client.id] = client
+        return client
+
+    def get_by_id(self, client_id: str) -> Optional[ClientRecord]:
+        return self._storage.get(client_id)
+
+    def list_all(self) -> List[ClientRecord]:
+        return list(self._storage.values())
+
+    def update(self, client_id: str, updated_client: ClientRecord) -> Optional[ClientRecord]:
+        if client_id not in self._storage:
+            return None
+        self._storage[client_id] = updated_client
+        return updated_client
+
+    def delete(self, client_id: str) -> bool:
+        return self._storage.pop(client_id, None) is not None
