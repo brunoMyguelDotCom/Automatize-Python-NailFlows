@@ -48,8 +48,19 @@ class AppointmentService:
     def get_appointment(self, appointment_id: str) -> Optional[Appointment]:
         return self.db.get_by_id(appointment_id)
 
-    def list_appointments(self) -> List[Appointment]:
-        return self.db.list_all()
+    def list_appointments(self, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[Appointment]:
+        appointments = self.db.list_all()
+
+        # Filter by date range
+        if start_date:
+            appointments = [a for a in appointments if a.start_time >= start_date]
+        if end_date:
+            appointments = [a for a in appointments if a.start_time <= end_date]
+
+        # Sort by start_time ascending
+        appointments.sort(key=lambda x: x.start_time)
+
+        return appointments
 
     def update_appointment(self, appointment_id: str, updated_data: AppointmentCreate) -> Appointment:
         # Fetch existing to maintain sync_state if not provided or to merge
