@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import re
 from app.api.endpoints import get_appointment_service, router
@@ -27,6 +28,15 @@ app = FastAPI(
     Permite a gestão de compromissos, integração com calendário e sincronização de status de confirmação.
     """,
     version=get_version_from_changelog(),
+)
+
+# Setup CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Setup infrastructure

@@ -68,7 +68,7 @@ Abaixo estão os endpoints disponíveis. Para testar, utilize o Swagger UI em `/
 | Método | Rota | Descrição | Parâmetros Principais |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/agendamentos` | Registrar um novo agendamento | `client` (nome, email, tel), `service`, `start_time`, `duration_minutes` |
-| `GET` | `/agendamentos` | Listar todos os agendamentos | Nenhum |
+| `GET` | `/agendamentos` | Listar todos os agendamentos | `start_date`, `end_date` (Opcionais) |
 | `GET` | `/agendamentos/{id}` | Obter detalhes de um agendamento | `id` (Path) |
 | `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente | `id` (Path), Corpo do agendamento |
 | `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento | `id` (Path) |
