@@ -33,6 +33,15 @@ app = FastAPI(
     version=get_version_from_changelog(),
 )
 
+# Setup CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Setup infrastructure
 from app.core.logging_config import logger
 from app.infrastructure.database.supabase import SupabaseClientDatabase, SupabaseDatabase

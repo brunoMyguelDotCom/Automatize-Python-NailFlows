@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Annotated
+from typing import List, Annotated, Optional
+from datetime import datetime
 from app.domain.models import Appointment, AppointmentCreate
 from app.services.appointment_service import AppointmentService
 
@@ -21,8 +22,12 @@ def create_appointment(appointment: AppointmentCreate, service: AppointmentServi
 @router.get("/", response_model=List[Appointment],
              summary="Listar todos os agendamentos",
              description="Retorna uma lista de todos os agendamentos registrados.")
-def list_appointments(service: AppointmentServiceDep):
-    return service.list_appointments()
+def list_appointments(
+    service: AppointmentServiceDep,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+):
+    return service.list_appointments(start_date=start_date, end_date=end_date)
 
 @router.get("/{id}", response_model=Appointment,
              summary="Obter agendamento por ID",

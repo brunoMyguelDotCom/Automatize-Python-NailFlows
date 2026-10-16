@@ -62,7 +62,7 @@ class Appointment(AppointmentBase):
     """Modelo completo de agendamento, incluindo o ID gerado."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Identificador único do agendamento", example="550e8400-e29b-41d4-a716-446655440000")
 
+    @computed_field
     @property
     def end_time(self) -> datetime:
-        from datetime import timedelta
         return self.start_time + timedelta(minutes=self.duration_minutes)
