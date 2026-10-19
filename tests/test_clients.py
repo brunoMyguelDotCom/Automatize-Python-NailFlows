@@ -48,10 +48,14 @@ class ClientEndpointTests(TestCase):
         created = self.create_client()
         after = datetime.now(timezone.utc)
         self.assertEqual(UUID(created["id"]).version, 4)
-        created_at = datetime.fromisoformat(created["created_at"].replace("Z", "+00:00"))
+        created_at = datetime.fromisoformat(
+            created["created_at"].replace("Z", "+00:00")
+        )
         self.assertLessEqual(before, created_at)
         self.assertLessEqual(created_at, after)
-        self.assertEqual({key: created[key] for key in self.client_data}, self.client_data)
+        self.assertEqual(
+            {key: created[key] for key in self.client_data}, self.client_data
+        )
 
         self.assertEqual(self.api.get("/clientes/").json(), [created])
         url = f"/clientes/{created['id']}"
@@ -79,7 +83,10 @@ class ClientEndpointTests(TestCase):
             json={"name": " Maria Souza ", "email": "souza@example.com"},
         )
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json(), {**created, "name": "Maria Souza", "email": "souza@example.com"})
+        self.assertEqual(
+            response.json(),
+            {**created, "name": "Maria Souza", "email": "souza@example.com"},
+        )
 
     def test_create_rejects_missing_or_invalid_fields(self):
         invalid_payloads = [
@@ -96,7 +103,9 @@ class ClientEndpointTests(TestCase):
         ]
         for payload in invalid_payloads:
             with self.subTest(payload=payload):
-                self.assertEqual(self.api.post("/clientes/", json=payload).status_code, 422)
+                self.assertEqual(
+                    self.api.post("/clientes/", json=payload).status_code, 422
+                )
         self.assertEqual(self.api.get("/clientes/").json(), [])
 
     def test_create_trims_contact_fields_and_generates_distinct_ids(self):
@@ -106,7 +115,9 @@ class ClientEndpointTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.text)
         first = response.json()
-        self.assertEqual({key: first[key] for key in self.client_data}, self.client_data)
+        self.assertEqual(
+            {key: first[key] for key in self.client_data}, self.client_data
+        )
         second = self.create_client()
         self.assertNotEqual(first["id"], second["id"])
         self.assertEqual(len(self.api.get("/clientes/").json()), 2)
@@ -115,9 +126,14 @@ class ClientEndpointTests(TestCase):
         created = self.create_client()
         url = f"/clientes/{created['id']}"
         for payload in [
-            {"name": None}, {"email": None}, {"phone": None},
-            {"name": "  "}, {"email": "invalid-email"}, {"phone": ""},
-            {"id": str(uuid4())}, {"created_at": "2020-01-01T00:00:00Z"},
+            {"name": None},
+            {"email": None},
+            {"phone": None},
+            {"name": "  "},
+            {"email": "invalid-email"},
+            {"phone": ""},
+            {"id": str(uuid4())},
+            {"created_at": "2020-01-01T00:00:00Z"},
         ]:
             with self.subTest(payload=payload):
                 self.assertEqual(self.api.patch(url, json=payload).status_code, 422)
@@ -136,33 +152,54 @@ class ClientEndpointTests(TestCase):
         self.assertEqual(self.api.delete(url).status_code, 422)
 
     def test_database_failure_returns_503_without_internal_details(self):
-        with patch.object(self.db, "list_all", side_effect=ClientDatabaseError("internal details")):
+        with patch.object(
+            self.db, "list_all", side_effect=ClientDatabaseError("internal details")
+        ):
             response = self.api.get("/clientes/")
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("internal details", response.text)
 
     def test_appointment_accepts_existing_client_payload(self):
         # A criação de agendamentos continua aceitando os dados de contato anteriores.
-        response = self.api.post("/agendamentos/", json={
-            "client": {"name": "Maria Silva", "email": "maria@example.com"},
-            "service": "Alongamento em gel",
-            "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-            "duration_minutes": 120,
-        })
+        response = self.api.post(
+            "/agendamentos/",
+            json={
+                "client": {"name": "Maria Silva", "email": "maria@example.com"},
+                "service": "Alongamento em gel",
+                "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
+                "duration_minutes": 120,
+            },
+        )
         self.assertEqual(response.status_code, 201, response.text)
-        self.assertEqual(response.json()["client"], {
-            "name": "Maria Silva", "email": "maria@example.com", "phone": None,
-        })
+        self.assertEqual(
+            response.json()["client"],
+            {
+                "name": "Maria Silva",
+                "email": "maria@example.com",
+                "phone": None,
+            },
+        )
         self.assertEqual(self.api.get("/clientes/").json(), [])
 
     def test_openapi_exposes_all_client_routes_and_models(self):
         schema = self.api.get("/openapi.json").json()
         self.assertEqual(set(schema["paths"]["/clientes/"]), {"get", "post"})
-        self.assertEqual(set(schema["paths"]["/clientes/{id}"]), {"get", "patch", "delete"})
+        self.assertEqual(
+            set(schema["paths"]["/clientes/{id}"]), {"get", "patch", "delete"}
+        )
         models = schema["components"]["schemas"]
-        self.assertEqual(set(models["ClientCreate"]["required"]), {"name", "email", "phone"})
+        self.assertEqual(
+            set(models["ClientCreate"]["required"]), {"name", "email", "phone"}
+        )
         self.assertNotIn("id", models["ClientCreate"]["properties"])
         self.assertNotIn("created_at", models["ClientUpdate"]["properties"])
-        self.assertEqual(set(models["ClientRecord"]["properties"]), {
-            "id", "name", "email", "phone", "created_at",
-        })
+        self.assertEqual(
+            set(models["ClientRecord"]["properties"]),
+            {
+                "id",
+                "name",
+                "email",
+                "phone",
+                "created_at",
+            },
+        )

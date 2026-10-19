@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from app.domain.models import Appointment, ClientRecord
 
+
 class BaseDatabase(ABC):
     @abstractmethod
     def create(self, appointment: Appointment) -> Appointment:
@@ -16,7 +17,9 @@ class BaseDatabase(ABC):
         pass
 
     @abstractmethod
-    def update(self, appointment_id: str, updated_appointment: Appointment) -> Optional[Appointment]:
+    def update(
+        self, appointment_id: str, updated_appointment: Appointment
+    ) -> Optional[Appointment]:
         pass
 
     @abstractmethod
@@ -42,7 +45,9 @@ class BaseClientDatabase(ABC):
         pass
 
     @abstractmethod
-    def update(self, client_id: str, updated_client: ClientRecord) -> Optional[ClientRecord]:
+    def update(
+        self, client_id: str, updated_client: ClientRecord
+    ) -> Optional[ClientRecord]:
         pass
 
     @abstractmethod

@@ -9,6 +9,8 @@ from app.services.client_service import ClientService
 from app.infrastructure.database.base import ClientDatabaseError
 from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
 from app.infrastructure.calendar.google_mock import GoogleMockCalendar
+from fastapi.middleware.cors import CORSMiddleware
+
 
 def get_version_from_changelog():
     try:
@@ -21,8 +23,10 @@ def get_version_from_changelog():
     except Exception as e:
         # Import logger here to avoid circular imports or ensure it's available
         from app.core.logging_config import logger
+
         logger.warning(f"Could not read version from CHANGELOG.md: {e}")
     return "0.0.0"
+
 
 app = FastAPI(
     title="NailFlows API",
@@ -44,7 +48,10 @@ app.add_middleware(
 
 # Setup infrastructure
 from app.core.logging_config import logger
-from app.infrastructure.database.supabase import SupabaseClientDatabase, SupabaseDatabase
+from app.infrastructure.database.supabase import (
+    SupabaseClientDatabase,
+    SupabaseDatabase,
+)
 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
@@ -54,7 +61,9 @@ if supabase_url and supabase_key:
     db = SupabaseDatabase()
     client_db = SupabaseClientDatabase(supabase_url, supabase_key)
 else:
-    logger.warning("SUPABASE_URL or SUPABASE_KEY not found. Falling back to IN-MEMORY MOCK database.")
+    logger.warning(
+        "SUPABASE_URL or SUPABASE_KEY not found. Falling back to IN-MEMORY MOCK database."
+    )
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
 
@@ -74,13 +83,18 @@ app.include_router(client_router)
 def handle_client_database_error(request: Request, exc: ClientDatabaseError):
     return JSONResponse(
         status_code=503,
-        content={"detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."},
+        content={
+            "detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."
+        },
     )
+
 
 @app.get("/")
 def root():
     return {"message": "Welcome to NailFlows API - Nail Designer Automation"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -7,9 +7,14 @@ from urllib.request import Request, urlopen
 
 from pydantic import ValidationError
 
-from app.infrastructure.database.base import BaseClientDatabase, BaseDatabase, ClientDatabaseError
+from app.infrastructure.database.base import (
+    BaseClientDatabase,
+    BaseDatabase,
+    ClientDatabaseError,
+)
 from app.domain.models import Appointment, ClientRecord
 from app.core.logging_config import logger
+
 
 class SupabaseDatabase(BaseDatabase):
     def __init__(self):
@@ -31,7 +36,9 @@ class SupabaseDatabase(BaseDatabase):
         logger.info("Listing all appointments from Supabase...")
         return []
 
-    def update(self, appointment_id: str, updated_appointment: Appointment) -> Optional[Appointment]:
+    def update(
+        self, appointment_id: str, updated_appointment: Appointment
+    ) -> Optional[Appointment]:
         logger.info(f"Updating appointment {appointment_id} in Supabase...")
         return updated_appointment
 
@@ -71,10 +78,14 @@ class SupabaseClientDatabase(BaseClientDatabase):
         except HTTPError as exc:
             logger.error("Supabase client request failed (HTTP %s)", exc.code)
             exc.close()
-            raise ClientDatabaseError("Falha ao acessar o cadastro de clientes") from exc
+            raise ClientDatabaseError(
+                "Falha ao acessar o cadastro de clientes"
+            ) from exc
         except (URLError, OSError, ValueError, ValidationError) as exc:
             logger.error("Supabase client request failed (%s)", type(exc).__name__)
-            raise ClientDatabaseError("Falha ao acessar o cadastro de clientes") from exc
+            raise ClientDatabaseError(
+                "Falha ao acessar o cadastro de clientes"
+            ) from exc
 
     def create(self, client: ClientRecord) -> ClientRecord:
         rows = self._request("POST", data=client.model_dump(mode="json"))
@@ -83,17 +94,25 @@ class SupabaseClientDatabase(BaseClientDatabase):
         return rows[0]
 
     def get_by_id(self, client_id: str) -> Optional[ClientRecord]:
-        rows = self._request("GET", params={"id": f"eq.{client_id}", "select": "*", "limit": "1"})
+        rows = self._request(
+            "GET", params={"id": f"eq.{client_id}", "select": "*", "limit": "1"}
+        )
         return rows[0] if rows else None
 
     def list_all(self) -> List[ClientRecord]:
-        return self._request("GET", params={"select": "*", "order": "created_at.asc,id.asc"})
+        return self._request(
+            "GET", params={"select": "*", "order": "created_at.asc,id.asc"}
+        )
 
-    def update(self, client_id: str, updated_client: ClientRecord) -> Optional[ClientRecord]:
+    def update(
+        self, client_id: str, updated_client: ClientRecord
+    ) -> Optional[ClientRecord]:
         rows = self._request(
             "PATCH",
             params={"id": f"eq.{client_id}"},
-            data=updated_client.model_dump(mode="json", include={"name", "email", "phone"}),
+            data=updated_client.model_dump(
+                mode="json", include={"name", "email", "phone"}
+            ),
         )
         return rows[0] if rows else None
 

@@ -26,7 +26,9 @@ class ClientService:
     def update_client(self, client_id: str, client_data: ClientUpdate) -> ClientRecord:
         existing = self.get_client(client_id)
         changes = client_data.model_dump(exclude_unset=True)
-        updated_client = ClientRecord.model_validate({**existing.model_dump(), **changes})
+        updated_client = ClientRecord.model_validate(
+            {**existing.model_dump(), **changes}
+        )
         saved_client = self.db.update(client_id, updated_client)
         if saved_client is None:
             raise HTTPException(status_code=404, detail="Cliente não encontrada")

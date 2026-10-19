@@ -5,6 +5,7 @@ from app.infrastructure.calendar.base import BaseCalendar
 from app.domain.models import Appointment, SyncStatus
 from app.core.logging_config import logger
 
+
 class GoogleMockCalendar(BaseCalendar):
     def __init__(self):
         # Mocking event storage: event_id -> (appointment_data, status)

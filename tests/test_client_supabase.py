@@ -12,8 +12,12 @@ from app.infrastructure.database.supabase import SupabaseClientDatabase
 
 class SupabaseClientDatabaseTests(TestCase):
     def setUp(self):
-        self.db = SupabaseClientDatabase("https://example.supabase.co/", "sb_secret_test")
-        self.client = ClientRecord(name="Maria Silva", email="maria@example.com", phone="11999999999")
+        self.db = SupabaseClientDatabase(
+            "https://example.supabase.co/", "sb_secret_test"
+        )
+        self.client = ClientRecord(
+            name="Maria Silva", email="maria@example.com", phone="11999999999"
+        )
         self.urlopen = patch("app.infrastructure.database.supabase.urlopen").start()
         self.addCleanup(patch.stopall)
 
@@ -31,7 +35,9 @@ class SupabaseClientDatabaseTests(TestCase):
         self.assertEqual(self.db.create(self.client), self.client)
         request = self.request()
         self.assertEqual(request.get_method(), "POST")
-        self.assertEqual(request.full_url, "https://example.supabase.co/rest/v1/clients")
+        self.assertEqual(
+            request.full_url, "https://example.supabase.co/rest/v1/clients"
+        )
         self.assertEqual(json.loads(request.data), data)
         self.assertEqual(request.get_header("Apikey"), "sb_secret_test")
         self.assertIsNone(request.get_header("Authorization"))
@@ -41,13 +47,17 @@ class SupabaseClientDatabaseTests(TestCase):
         self.db.key = "eyJ.test.jwt"
         self.respond_with([])
         self.db.list_all()
-        self.assertEqual(self.request().get_header("Authorization"), "Bearer eyJ.test.jwt")
+        self.assertEqual(
+            self.request().get_header("Authorization"), "Bearer eyJ.test.jwt"
+        )
 
     def test_get_filters_by_id_and_handles_missing_client(self):
         self.respond_with([self.client.model_dump(mode="json")])
         self.assertEqual(self.db.get_by_id(self.client.id), self.client)
         query = parse_qs(urlparse(self.request().full_url).query)
-        self.assertEqual(query, {"id": [f"eq.{self.client.id}"], "select": ["*"], "limit": ["1"]})
+        self.assertEqual(
+            query, {"id": [f"eq.{self.client.id}"], "select": ["*"], "limit": ["1"]}
+        )
         self.respond_with([])
         self.assertIsNone(self.db.get_by_id(self.client.id))
 
@@ -63,7 +73,9 @@ class SupabaseClientDatabaseTests(TestCase):
         request = self.request()
         self.assertEqual(request.get_method(), "PATCH")
         self.assertEqual(set(json.loads(request.data)), {"name", "email", "phone"})
-        self.assertEqual(parse_qs(urlparse(request.full_url).query), {"id": [f"eq.{self.client.id}"]})
+        self.assertEqual(
+            parse_qs(urlparse(request.full_url).query), {"id": [f"eq.{self.client.id}"]}
+        )
         self.respond_with([])
         self.assertIsNone(self.db.update(self.client.id, self.client))
 
@@ -71,13 +83,18 @@ class SupabaseClientDatabaseTests(TestCase):
         self.respond_with([self.client.model_dump(mode="json")])
         self.assertTrue(self.db.delete(self.client.id))
         self.assertEqual(self.request().get_method(), "DELETE")
-        self.assertEqual(parse_qs(urlparse(self.request().full_url).query), {"id": [f"eq.{self.client.id}"]})
+        self.assertEqual(
+            parse_qs(urlparse(self.request().full_url).query),
+            {"id": [f"eq.{self.client.id}"]},
+        )
         self.respond_with([])
         self.assertFalse(self.db.delete(self.client.id))
 
     def test_network_errors_are_reported_as_database_failures(self):
         for error in [
-            HTTPError(self.db.url, 403, "Forbidden", {}, io.BytesIO(b"private details")),
+            HTTPError(
+                self.db.url, 403, "Forbidden", {}, io.BytesIO(b"private details")
+            ),
             URLError("unavailable"),
             TimeoutError("request timed out"),
         ]:

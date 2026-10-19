@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from app.domain.models import Appointment, SyncStatus
 
+
 class BaseCalendar(ABC):
     @abstractmethod
     def create_event(self, appointment: Appointment) -> Optional[str]:
