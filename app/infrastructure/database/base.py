@@ -31,6 +31,10 @@ class ClientDatabaseError(RuntimeError):
     """Falha de acesso ao armazenamento de clientes."""
 
 
+class AppointmentDatabaseError(RuntimeError):
+    """Falha de acesso ao armazenamento de agendamentos."""
+
+
 class BaseClientDatabase(ABC):
     @abstractmethod
     def create(self, client: ClientRecord) -> ClientRecord:

@@ -1,15 +1,17 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import os
 import re
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api.client_endpoints import get_client_service
+from app.api.client_endpoints import router as client_router
 from app.api.endpoints import get_appointment_service, router
-from app.api.client_endpoints import get_client_service, router as client_router
+from app.infrastructure.calendar.google_mock import GoogleMockCalendar
+from app.infrastructure.database.base import ClientDatabaseError, AppointmentDatabaseError
+from app.infrastructure.database.config import load_supabase_config
+from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
 from app.services.appointment_service import AppointmentService
 from app.services.client_service import ClientService
-from app.infrastructure.database.base import ClientDatabaseError
-from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
-from app.infrastructure.calendar.google_mock import GoogleMockCalendar
-from fastapi.middleware.cors import CORSMiddleware
 
 
 def get_version_from_changelog():
@@ -20,7 +22,7 @@ def get_version_from_changelog():
             match = re.search(r"\[(\d+\.\d+\.\d+)\]", content)
             if match:
                 return match.group(1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Import logger here to avoid circular imports or ensure it's available
         from app.core.logging_config import logger
 
@@ -53,16 +55,15 @@ from app.infrastructure.database.supabase import (
     SupabaseDatabase,
 )
 
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_KEY")
+supabase_url, supabase_key = load_supabase_config()
 
 if supabase_url and supabase_key:
     logger.info("Using real Supabase Database connection")
-    db = SupabaseDatabase()
+    db = SupabaseDatabase(supabase_url, supabase_key)
     client_db = SupabaseClientDatabase(supabase_url, supabase_key)
 else:
     logger.warning(
-        "SUPABASE_URL or SUPABASE_KEY not found. Falling back to IN-MEMORY MOCK database."
+        "Supabase não configurado. Usando banco de dados em memória."
     )
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
@@ -86,6 +87,14 @@ def handle_client_database_error(request: Request, exc: ClientDatabaseError):
         content={
             "detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."
         },
+    )
+
+
+@app.exception_handler(AppointmentDatabaseError)
+def handle_appointment_database_error(request: Request, exc: AppointmentDatabaseError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Não foi possível acessar os agendamentos. Tente novamente."},
     )
 
 

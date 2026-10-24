@@ -1,6 +1,6 @@
 # NailFlows API
 
-API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. O cadastro de clientes pode ser armazenado em memória ou no Supabase; a integração dos agendamentos com Supabase e Google Agenda ainda é simulada.
+API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Clientes e agendamentos podem ser armazenados em memória ou no Supabase. A integração com Google Agenda ainda é simulada.
 
 ## Primeiros Passos
 
@@ -33,11 +33,19 @@ API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. O cadas
    ```
 
 4. **Configuração do Ambiente:**
-   Sem configuração, a API utiliza armazenamento em memória para desenvolvimento. Para persistir clientes no Supabase, execute o arquivo `app/infrastructure/database/migrations/001_create_clients.sql` no SQL Editor do projeto e configure as variáveis de ambiente do processo:
+   O arquivo [`.env.example`](.env.example) contém o modelo das variáveis. Se ainda não tiver um `.env`, copie o modelo:
+   ```bash
+   cp .env.example .env
+   ```
+   No PowerShell, use `Copy-Item .env.example .env`. Se já existir um `.env`, mantenha os valores atuais e adicione apenas os campos ausentes do modelo.
+
+   Preencha `SUPABASE_URL` e `SUPABASE_SECRET_KEY` com os valores reais no `.env`. O nome legado `SUPABASE_KEY` também é aceito; `SUPABASE_SECRET_KEY` tem prioridade. Configuração parcial gera erro para evitar uso acidental do banco em memória. Para executar em memória, deixe essas duas variáveis vazias.
+
+   Sem configuração, a API utiliza armazenamento em memória para desenvolvimento. Para usar o Supabase, configure as variáveis abaixo. Prepare as tabelas conforme as instruções abaixo antes de usar o cadastro de clientes:
    ```env
    # Configuração do Supabase
    SUPABASE_URL=seu_url_do_supabase_aqui
-   SUPABASE_KEY=sua_chave_secreta_do_backend_aqui
+   SUPABASE_SECRET_KEY=sua_chave_secreta_do_backend_aqui
 
    # Configuração do Google Agenda (para futura implementação real)
    GOOGLE_CLIENT_ID=seu_google_client_id
@@ -47,10 +55,10 @@ API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. O cadas
    No PowerShell, antes de iniciar a API:
    ```powershell
    $env:SUPABASE_URL = "https://seu-projeto.supabase.co"
-   $env:SUPABASE_KEY = "sua_chave_secreta_do_backend_aqui"
+   $env:SUPABASE_SECRET_KEY = "sua_chave_secreta_do_backend_aqui"
    ```
 
-   A aplicação lê as variáveis de ambiente com `os.getenv`; um arquivo `.env` não é carregado automaticamente. Se utilizar esse arquivo com outra ferramenta, mantenha-o fora do controle de versão. A tabela de clientes usa RLS e acesso pelo backend com uma chave secreta (`sb_secret_...`) ou a chave legada `service_role`. A chave permanece no backend. Consulte a [documentação de chaves do Supabase](https://supabase.com/docs/guides/api/api-keys).
+   Você também pode criar um arquivo `.env` na raiz do projeto com essas variáveis. A aplicação carrega esse arquivo automaticamente, independentemente do diretório de execução, sem sobrescrever variáveis já definidas no ambiente do processo. Mantenha o arquivo fora do controle de versão. A tabela de clientes usa RLS e acesso pelo backend com uma chave secreta (`sb_secret_...`) ou a chave legada `service_role`. A chave permanece no backend. Consulte a [documentação de chaves do Supabase](https://supabase.com/docs/guides/api/api-keys).
 
 ### Executando a Aplicacao
 
@@ -60,6 +68,23 @@ python main.py
 ```
 A API estará disponível em `http://localhost:8000`.
 A documentação interativa do Swagger pode ser acessada em `http://localhost:8000/docs`.
+
+Para criar todas as tabelas em uma instalação inicial, execute o arquivo
+[`app/infrastructure/database/init.sql`](app/infrastructure/database/init.sql)
+completo no **SQL Editor** do painel do Supabase. O script executa a criação das
+tabelas e a configuração de acesso em uma única transação.
+
+Como alternativa, execute os arquivos SQL de
+`app/infrastructure/database/migrations` no **SQL Editor** do painel do Supabase,
+em ordem de nome. Os scripts criam `clients` e `appointments` e configuram o
+acesso pelo backend. Usam `CREATE TABLE IF NOT EXISTS`, sem apagar dados existentes.
+A aplicação usa somente `SUPABASE_URL` e `SUPABASE_SECRET_KEY` para acessar a API REST e
+não executa migrações na inicialização.
+
+`IF NOT EXISTS` não atualiza colunas de tabelas já existentes; futuras alterações
+precisam de scripts próprios. O CRUD de agendamentos usa a tabela `appointments` pela API REST do Supabase.
+Falhas de persistência retornam HTTP `503`. O campo `end_time` é calculado pela
+aplicação e não é enviado como coluna ao banco.
 
 ## Arquitetura
 
@@ -129,6 +154,9 @@ Os agendamentos continuam recebendo os dados de contato no campo `client`. O cad
 | `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente | `id` (Path), Corpo do agendamento |
 | `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento | `id` (Path) |
 | `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronização com o Google Agenda | `id` (Path) |
+
+Datas com fuso horário são convertidas para UTC. Datas sem fuso, inclusive nos
+filtros, são interpretadas no horário de `America/Sao_Paulo`.
 
 **Observação:** O campo `id` do agendamento é gerado automaticamente pelo sistema e não deve ser enviado na requisição de criação (`POST`).
 

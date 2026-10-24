@@ -1,10 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Optional, Union
 from fastapi import HTTPException
 
 from app.domain.models import Appointment, SyncStatus, AppointmentCreate
-from app.infrastructure.database.base import BaseDatabase
+from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError
 from app.infrastructure.calendar.base import BaseCalendar
+
+
+def as_utc(value: datetime) -> datetime:
+    # Datas sem fuso da API são interpretadas no horário de São Paulo.
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+    return value.astimezone(timezone.utc)
 
 
 class AppointmentService:
@@ -16,7 +24,7 @@ class AppointmentService:
         self, appointment: Appointment, ignore_id: Optional[str] = None
     ):
         # 1. Prevent appointments in the past
-        if appointment.start_time < datetime.now():
+        if as_utc(appointment.start_time) < datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=400, detail="Appointment cannot be in the past"
             )
@@ -29,8 +37,8 @@ class AppointmentService:
 
             # Check for overlap: (StartA < EndB) and (EndA > StartB)
             if (
-                appointment.start_time < existing.end_time
-                and appointment.end_time > existing.start_time
+                as_utc(appointment.start_time) < as_utc(existing.end_time)
+                and as_utc(appointment.end_time) > as_utc(existing.start_time)
             ):
                 raise HTTPException(
                     status_code=400,
@@ -40,16 +48,20 @@ class AppointmentService:
     def create_appointment(self, appointment_data: AppointmentCreate) -> Appointment:
         # Convert AppointmentCreate to Appointment to generate ID
         appointment = Appointment(**appointment_data.model_dump())
+        appointment.start_time = as_utc(appointment.start_time)
         self._validate_appointment(appointment)
 
         # Save to DB
-        self.db.create(appointment)
+        appointment = self.db.create(appointment)
 
         # Sync with Google Calendar
         event_id = self.calendar.create_event(appointment)
         if event_id:
             appointment.sync_state.google_event_id = event_id
-            self.db.update(appointment.id, appointment)
+            saved = self.db.update(appointment.id, appointment)
+            if saved is None:
+                raise AppointmentDatabaseError("Agendamento não encontrado ao salvar sincronização")
+            appointment = saved
 
         return appointment
 
@@ -63,12 +75,12 @@ class AppointmentService:
 
         # Filter by date range
         if start_date:
-            appointments = [a for a in appointments if a.start_time >= start_date]
+            appointments = [a for a in appointments if as_utc(a.start_time) >= as_utc(start_date)]
         if end_date:
-            appointments = [a for a in appointments if a.start_time <= end_date]
+            appointments = [a for a in appointments if as_utc(a.start_time) <= as_utc(end_date)]
 
         # Sort by start_time ascending
-        appointments.sort(key=lambda x: x.start_time)
+        appointments.sort(key=lambda x: as_utc(x.start_time))
 
         return appointments
 
@@ -83,6 +95,7 @@ class AppointmentService:
         # Create Appointment model with the existing ID
         updated_appointment = Appointment(**updated_data.model_dump())
         updated_appointment.id = appointment_id
+        updated_appointment.start_time = as_utc(updated_appointment.start_time)
 
         # Preserve existing sync_state if it was not explicitly changed in updated_data
         # (Depending on requirements, you might want to allow updating sync_state via API)
@@ -91,7 +104,10 @@ class AppointmentService:
         self._validate_appointment(updated_appointment, ignore_id=appointment_id)
 
         # Save to DB
-        self.db.update(appointment_id, updated_appointment)
+        saved = self.db.update(appointment_id, updated_appointment)
+        if saved is None:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+        updated_appointment = saved
 
         # Sync with Google Calendar
         if updated_appointment.sync_state.google_event_id:
@@ -128,6 +144,9 @@ class AppointmentService:
         new_status = self.calendar.get_event_status(event_id)
         if new_status:
             appointment.sync_state.status = new_status
-            self.db.update(appointment.id, appointment)
+            saved = self.db.update(appointment.id, appointment)
+            if saved is None:
+                raise AppointmentDatabaseError("Agendamento não encontrado ao salvar sincronização")
+            appointment = saved
 
         return appointment
