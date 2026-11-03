@@ -2,6 +2,14 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [0.4.0] - 2026-11-03
+
+### Added
+- Implementação de persistência real para agendamentos via API REST do Supabase (`SupabaseDatabase`), substituindo a simulação anterior.
+- Suporte a operações CRUD completas para agendamentos no Supabase: criação, leitura, atualização e exclusão.
+- Integração de tratamento de erros específico para agendamentos no Supabase utilizando `AppointmentDatabaseError`.
+- Refatoração da infraestrutura de banco de dados para suportar múltiplos modelos de registro através da classe base `SupabaseRestDatabase`.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added
