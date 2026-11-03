@@ -15,17 +15,18 @@ create table if not exists public.clients (
     created_at timestamptz not null default now()
 );
 
--- Agendamentos: client contém os dados de contato do próprio agendamento.
--- O modelo atual não possui client_id ou vínculo com o cadastro de clientes.
+-- Agendamentos: vinculado a um cliente via client_id.
 -- sync_state contém google_event_id, status e last_synced quando disponíveis.
 -- end_time é calculado pela aplicação a partir do início e da duração.
 create table if not exists public.appointments (
     id uuid primary key default gen_random_uuid(),
-    client jsonb not null,
+    client_id uuid not null references public.clients(id) on delete restrict,
     service text not null,
     start_time timestamptz not null,
     duration_minutes integer not null,
-    sync_state jsonb not null default '{"status": "Pending"}'::jsonb
+    sync_google_event_id text,
+    sync_status text not null default 'Pending',
+    sync_last_synced timestamptz
 );
 
 alter table public.clients enable row level security;

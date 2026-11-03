@@ -21,7 +21,7 @@ AppointmentServiceDep = Annotated[AppointmentService, Depends(get_appointment_se
     response_model=Appointment,
     status_code=201,
     summary="Criar novo agendamento",
-    description="Cria um novo agendamento no sistema. O ID do agendamento é gerado automaticamente pelo servidor.",
+    description="Cria um novo agendamento no sistema. O agendamento depende de um client_id válido e a data deve ser futura.",
 )
 def create_appointment(appointment: AppointmentCreate, service: AppointmentServiceDep):
     return service.create_appointment(appointment)

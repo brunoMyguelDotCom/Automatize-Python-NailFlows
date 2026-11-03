@@ -111,14 +111,18 @@ class SyncState(BaseModel):
 
 
 class AppointmentBase(BaseModel):
-    client: Client = Field(..., description="Dados da cliente")
+    client_id: str = Field(
+        ...,
+        description="ID da cliente vinculada ao agendamento",
+        example="550e8400-e29b-41d4-a716-446655440000"
+    )
     service: str = Field(
         ..., description="Nome do serviço a ser realizado", example="Alongamento em Gel"
     )
     start_time: datetime = Field(
         ...,
-        description="Data e hora de início do agendamento",
-        example="2026-10-20T14:00:00",
+        description="Data e hora de início do agendamento (deve ser data futura)",
+        example="2026-11-10T14:00:00",
     )
     duration_minutes: int = Field(
         ..., description="Duração do serviço em minutos", example=120
@@ -126,6 +130,11 @@ class AppointmentBase(BaseModel):
     sync_state: SyncState = Field(
         default_factory=SyncState,
         description="Estado de sincronização com o calendário",
+    )
+
+    # Campo opcional para quando o dado for hidratado via Join no banco
+    client: Optional[Client] = Field(
+        default=None, description="Dados da cliente (carregados via join)"
     )
 
 
