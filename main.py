@@ -1,4 +1,5 @@
 import re
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -68,7 +69,23 @@ else:
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
 
-calendar = GoogleMockCalendar()
+# As bibliotecas Google só são importadas quando a integração é habilitada.
+backend = os.getenv("CALENDAR_BACKEND", "mock").strip().lower()
+if backend == "google":
+    from app.infrastructure.calendar.google import GoogleCalendar, CalendarError
+    from app.api.google_endpoints import router as google_router
+
+    calendar = GoogleCalendar()
+    app.state.google_calendar = calendar
+    app.include_router(google_router)
+
+    @app.exception_handler(CalendarError)
+    def handle_calendar_error(request: Request, exc: CalendarError):
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+elif backend == "mock":
+    calendar = GoogleMockCalendar()
+else:
+    raise ValueError("CALENDAR_BACKEND deve ser mock ou google")
 appointment_service = AppointmentService(db, calendar)
 client_service = ClientService(client_db)
 
@@ -106,4 +123,4 @@ def root():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000, access_log=False)

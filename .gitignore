@@ -17,3 +17,8 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Tokens e credenciais do Google
+.secrets/
+credentials.json
+token.json

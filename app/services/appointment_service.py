@@ -95,6 +95,7 @@ class AppointmentService:
         # Create Appointment model with the existing ID
         updated_appointment = Appointment(**updated_data.model_dump())
         updated_appointment.id = appointment_id
+        updated_appointment.sync_state = existing.sync_state.model_copy(deep=True)
         updated_appointment.start_time = as_utc(updated_appointment.start_time)
 
         # Preserve existing sync_state if it was not explicitly changed in updated_data
@@ -135,15 +136,16 @@ class AppointmentService:
 
         event_id = appointment.sync_state.google_event_id
         if not event_id:
-            raise HTTPException(
-                status_code=400,
-                detail="No Google Event ID associated with this appointment",
-            )
+            event_id = self.calendar.create_event(appointment)
+            appointment.sync_state.google_event_id = event_id
+        else:
+            self.calendar.update_event(event_id, appointment)
 
         # Poll Google Calendar for status
         new_status = self.calendar.get_event_status(event_id)
         if new_status:
             appointment.sync_state.status = new_status
+            appointment.sync_state.last_synced = datetime.now(timezone.utc)
             saved = self.db.update(appointment.id, appointment)
             if saved is None:
                 raise AppointmentDatabaseError("Agendamento não encontrado ao salvar sincronização")

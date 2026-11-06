@@ -2,6 +2,28 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [0.4.0] - 2026-11-05
+
+### Added
+
+- Integração real com Google Calendar para uma conta/agenda por instalação, com criação, atualização e exclusão de eventos e envio de convites à cliente.
+- Fluxo OAuth 2.0 nas rotas `/auth/google/connect` e `/auth/google/callback`, com validação de estado, vínculo ao navegador, PKCE e expiração da autorização pendente.
+- Armazenamento local de tokens criptografados com Fernet, gravação atômica com permissões restritas e renovação automática do acesso.
+- Consulta da resposta ao convite e recuperação de agendamentos sem evento associado pela rota de sincronização.
+- Testes de autorização OAuth, criptografia, renovação de tokens e integração dos agendamentos com o calendário, com chamadas externas simuladas.
+- Guia de configuração OAuth e das variáveis de ambiente no README, incluindo limites da integração e recuperação após falhas.
+
+### Changed
+
+- Seleção entre calendário simulado e real pela variável `CALENDAR_BACKEND`.
+- Execução local por `python main.py` restrita a `127.0.0.1`, com access log desativado para evitar registrar códigos OAuth nas URLs.
+- Arquivos de tokens e credenciais Google adicionados ao `.gitignore`.
+
+### Fixed
+
+- Preservação do ID do evento e do estado de sincronização ao atualizar um agendamento.
+- Registro da data da última sincronização ao consultar o status do convite.
+
 ## [0.3.0] - 2026-10-09
 
 ### Added
@@ -50,6 +72,6 @@ O código implementa atualmente o núcleo lógico de um sistema de agendamentos.
 
 1. **Cadastro de Clientes**: Criação, leitura, atualização parcial e exclusão de clientes, com identificação e data de cadastro geradas pelo servidor.
 2. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão de horários, com validações automáticas para impedir agendamentos em datas passadas ou a marcação de dois clientes no mesmo horário (sobreposição).
-3. **Sincronização com Google Agenda (Mock)**: Ao criar ou atualizar um agendamento, o sistema simula a criação de um evento no Google Agenda.
-4. **Rastreamento de Status**: O sistema consegue consultar (via mock) se o cliente confirmou, recusou ou está pendente no convite do Google Agenda, atualizando essa informação no banco de dados interno.
-5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, o cadastro de clientes utiliza a API REST do Supabase; a persistência dos agendamentos permanece simulada.
+3. **Integração com Google Agenda**: Calendário simulado ou integração real via OAuth para uma conta por instalação, com criação, atualização e exclusão de eventos.
+4. **Rastreamento de Status**: Consulta manual da resposta ao convite (confirmado, recusado, talvez ou pendente), com atualização do estado e da data de sincronização no banco interno.
+5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, clientes e agendamentos utilizam a API REST do Supabase.
