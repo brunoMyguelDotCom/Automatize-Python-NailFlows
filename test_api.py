@@ -1,6 +1,6 @@
-import requests
 from datetime import datetime, timedelta
-import json
+
+import requests
 
 BASE_URL = "http://localhost:8080"
 

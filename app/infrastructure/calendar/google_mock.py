@@ -1,23 +1,25 @@
-import uuid
 import random
-from typing import Optional, Dict
-from app.infrastructure.calendar.base import BaseCalendar
-from app.domain.models import Appointment, SyncStatus
+import uuid
+
 from app.core.logging_config import logger
+from app.domain.models import Appointment, SyncStatus
+from app.infrastructure.calendar.base import BaseCalendar
 
 
 class GoogleMockCalendar(BaseCalendar):
     def __init__(self):
         # Mocking event storage: event_id -> (appointment_data, status)
-        self._events: Dict[str, tuple] = {}
+        self._events: dict[str, tuple] = {}
 
-    def create_event(self, appointment: Appointment) -> Optional[str]:
+    def create_event(self, appointment: Appointment) -> str | None:
         event_id = f"google_{uuid.uuid4().hex[:8]}"
         # Mocking that Google creates the event with PENDING status
         self._events[event_id] = (appointment, SyncStatus.PENDING)
 
         # Use client_id because the client object is not hydrated during creation
-        client_label = appointment.client.name if appointment.client else appointment.client_id
+        client_label = (
+            appointment.client.name if appointment.client else appointment.client_id
+        )
         logger.info(f"Event created: {event_id} for client {client_label}")
         return event_id
 
@@ -36,7 +38,7 @@ class GoogleMockCalendar(BaseCalendar):
             return True
         return False
 
-    def get_event_status(self, event_id: str) -> Optional[SyncStatus]:
+    def get_event_status(self, event_id: str) -> SyncStatus | None:
         if event_id in self._events:
             # Mocking a random response from the client for demonstration
             # In a real scenario, this would be the actual guest response from the API

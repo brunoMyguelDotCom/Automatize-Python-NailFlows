@@ -1,5 +1,5 @@
 import re
-from dotenv import load_dotenv
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,12 +8,17 @@ from app.api.client_endpoints import get_client_service
 from app.api.client_endpoints import router as client_router
 from app.api.endpoints import get_appointment_service, get_service_service, router
 from app.infrastructure.calendar.google_mock import GoogleMockCalendar
-from app.infrastructure.database.base import ClientDatabaseError, AppointmentDatabaseError, ServiceDatabaseError
+from app.infrastructure.database.base import (
+    AppointmentDatabaseError,
+    ClientDatabaseError,
+    ServiceDatabaseError,
+)
 from app.infrastructure.database.config import load_supabase_config
 from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
 from app.services.appointment_service import AppointmentService
 from app.services.client_service import ClientService
 from app.services.service_service import ServiceService
+
 
 def get_version_from_changelog():
     try:
@@ -24,8 +29,10 @@ def get_version_from_changelog():
                 return match.group(1)
     except Exception as e:
         from app.core.logging_config import logger
+
         logger.warning(f"Could not read version from CHANGELOG.md: {e}")
     return "0.0.0"
+
 
 app = FastAPI(
     title="NailFlows API",
@@ -61,9 +68,7 @@ if supabase_url and supabase_key:
     client_db = SupabaseClientDatabase(supabase_url, supabase_key)
     service_db = SupabaseServiceDatabase(supabase_url, supabase_key)
 else:
-    logger.warning(
-        "Supabase não configurado. Usando banco de dados em memória."
-    )
+    logger.warning("Supabase não configurado. Usando banco de dados em memória.")
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
     service_db = None
@@ -82,19 +87,26 @@ app.dependency_overrides[get_service_service] = lambda: service_service
 app.include_router(router)
 app.include_router(client_router)
 
+
 @app.exception_handler(ClientDatabaseError)
 def handle_client_database_error(request: Request, exc: ClientDatabaseError):
     return JSONResponse(
         status_code=503,
-        content={"detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."},
+        content={
+            "detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."
+        },
     )
+
 
 @app.exception_handler(AppointmentDatabaseError)
 def handle_appointment_database_error(request: Request, exc: AppointmentDatabaseError):
     return JSONResponse(
         status_code=503,
-        content={"detail": "Não foi possível acessar os agendamentos. Tente novamente."},
+        content={
+            "detail": "Não foi possível acessar os agendamentos. Tente novamente."
+        },
     )
+
 
 @app.exception_handler(ServiceDatabaseError)
 def handle_service_database_error(request: Request, exc: ServiceDatabaseError):
@@ -103,10 +115,13 @@ def handle_service_database_error(request: Request, exc: ServiceDatabaseError):
         content={"detail": "Não foi possível acessar os serviços. Tente novamente."},
     )
 
+
 @app.get("/")
 def root():
     return {"message": "Welcome to NailFlows API - Nail Designer Automation"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

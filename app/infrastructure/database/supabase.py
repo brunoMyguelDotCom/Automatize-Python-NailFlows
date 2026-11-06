@@ -1,5 +1,4 @@
 import json
-from typing import List, Optional
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -7,17 +6,17 @@ from urllib.request import Request, urlopen
 
 from pydantic import ValidationError
 
+from app.core.logging_config import logger
+from app.domain.models import Appointment, ClientRecord, Service
 from app.infrastructure.database.base import (
+    AppointmentDatabaseError,
     BaseClientDatabase,
     BaseDatabase,
     BaseServiceDatabase,
     ClientDatabaseError,
-    AppointmentDatabaseError,
-    ServiceDatabaseError,
     ForeignKeyViolationError,
+    ServiceDatabaseError,
 )
-from app.domain.models import Appointment, ClientRecord, Service
-from app.core.logging_config import logger
 from app.infrastructure.database.config import load_supabase_config
 
 
@@ -55,7 +54,11 @@ class SupabaseRestDatabase:
                 return obj.isoformat()
             raise TypeError(f"Type {type(obj)} not serializable")
 
-        body = json.dumps(data, default=json_serial).encode("utf-8") if data is not None else None
+        body = (
+            json.dumps(data, default=json_serial).encode("utf-8")
+            if data is not None
+            else None
+        )
         request = Request(url, data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=10) as response:
@@ -75,8 +78,14 @@ class SupabaseRestDatabase:
                 error_body = exc.read().decode("utf-8")
                 logger.error("Supabase HTTP Error %s: %s", exc.code, error_body)
 
-                if "foreign_key_violation" in error_body or "violates foreign key constraint" in error_body or "23503" in error_body:
-                    raise ForeignKeyViolationError("Violação de chave estrangeira detectada no banco de dados") from exc
+                if (
+                    "foreign_key_violation" in error_body
+                    or "violates foreign key constraint" in error_body
+                    or "23503" in error_body
+                ):
+                    raise ForeignKeyViolationError(
+                        "Violação de chave estrangeira detectada no banco de dados"
+                    ) from exc
             except ForeignKeyViolationError:
                 raise
             except Exception as read_exc:
@@ -84,14 +93,10 @@ class SupabaseRestDatabase:
 
             exc.close()
             # Use the record_model's specific database_error to avoid generic errors
-            raise self.database_error(
-                "Falha ao acessar o banco de dados"
-            ) from exc
+            raise self.database_error("Falha ao acessar o banco de dados") from exc
         except (URLError, OSError, ValueError, ValidationError) as exc:
             logger.error("Supabase request failed (%s)", type(exc).__name__)
-            raise self.database_error(
-                "Falha ao acessar o banco de dados"
-            ) from exc
+            raise self.database_error("Falha ao acessar o banco de dados") from exc
 
     def _hydrate_appointment(self, row: dict) -> dict:
         """Reconstructs nested Appointment models from flat database columns and joined client/service data."""
@@ -132,20 +137,20 @@ class SupabaseClientDatabase(SupabaseRestDatabase, BaseClientDatabase):
             raise ClientDatabaseError("O banco não retornou a cliente cadastrada")
         return rows[0]
 
-    def get_by_id(self, client_id: str) -> Optional[ClientRecord]:
+    def get_by_id(self, client_id: str) -> ClientRecord | None:
         rows = self._request(
             "GET", params={"id": f"eq.{client_id}", "select": "*", "limit": "1"}
         )
         return rows[0] if rows else None
 
-    def list_all(self) -> List[ClientRecord]:
+    def list_all(self) -> list[ClientRecord]:
         return self._request(
             "GET", params={"select": "*", "order": "created_at.asc,id.asc"}
         )
 
     def update(
         self, client_id: str, updated_client: ClientRecord
-    ) -> Optional[ClientRecord]:
+    ) -> ClientRecord | None:
         rows = self._request(
             "PATCH",
             params={"id": f"eq.{client_id}"},
@@ -161,7 +166,7 @@ class SupabaseClientDatabase(SupabaseRestDatabase, BaseClientDatabase):
             return bool(rows)
         except self.database_error as exc:
             logger.error("Falha ao deletar cliente %s: %s", client_id, str(exc))
-            raise exc
+            raise
 
 
 class SupabaseServiceDatabase(SupabaseRestDatabase, BaseServiceDatabase):
@@ -179,18 +184,16 @@ class SupabaseServiceDatabase(SupabaseRestDatabase, BaseServiceDatabase):
             raise ServiceDatabaseError("O banco não retornou o serviço cadastrado")
         return rows[0]
 
-    def get_by_id(self, service_id: str) -> Optional[Service]:
+    def get_by_id(self, service_id: str) -> Service | None:
         rows = self._request(
             "GET", params={"id": f"eq.{service_id}", "select": "*", "limit": "1"}
         )
         return rows[0] if rows else None
 
-    def list_all(self) -> List[Service]:
+    def list_all(self) -> list[Service]:
         return self._request("GET", params={"select": "*", "order": "name.asc,id.asc"})
 
-    def update(
-        self, service_id: str, updated_service: Service
-    ) -> Optional[Service]:
+    def update(self, service_id: str, updated_service: Service) -> Service | None:
         rows = self._request(
             "PATCH",
             params={"id": f"eq.{service_id}"},
@@ -204,7 +207,7 @@ class SupabaseServiceDatabase(SupabaseRestDatabase, BaseServiceDatabase):
             return bool(rows)
         except self.database_error as exc:
             logger.error("Falha ao deletar serviço %s: %s", service_id, str(exc))
-            raise exc
+            raise
 
 
 class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
@@ -219,19 +222,25 @@ class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
         self.url = f"{url.rstrip('/')}/rest/v1/appointments"
         self.key = key
 
-    def _flatten_appointment(self, appointment: Appointment, partial: bool = False) -> dict:
+    def _flatten_appointment(
+        self, appointment: Appointment, partial: bool = False
+    ) -> dict:
         """Converts a structured Appointment domain model into a flat dictionary for the DB.
         Only includes columns that actually exist in the PostgreSQL table.
         """
         # Construct the data dictionary explicitly to avoid sending 'service' or other non-existent columns
         data = {
-            "start_time": appointment.start_time.isoformat() if hasattr(appointment.start_time, 'isoformat') else appointment.start_time,
+            "start_time": appointment.start_time.isoformat()
+            if hasattr(appointment.start_time, "isoformat")
+            else appointment.start_time,
             "duration_minutes": appointment.duration_minutes,
             "client_id": appointment.client_id,
             "service_id": appointment.service_id,
             "sync_google_event_id": appointment.sync_state.google_event_id,
             "sync_status": appointment.sync_state.status.value,
-            "sync_last_synced": appointment.sync_state.last_synced.isoformat() if appointment.sync_state.last_synced else None,
+            "sync_last_synced": appointment.sync_state.last_synced.isoformat()
+            if appointment.sync_state.last_synced
+            else None,
         }
 
         if partial:
@@ -243,23 +252,25 @@ class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
         return data
 
     def create(self, appointment: Appointment) -> Appointment:
-        rows = self._request(
-            "POST", data=self._flatten_appointment(appointment)
-        )
+        rows = self._request("POST", data=self._flatten_appointment(appointment))
         if not rows:
             raise AppointmentDatabaseError("O banco não retornou o agendamento criado")
         return rows[0]
 
-    def get_by_id(self, appointment_id: str) -> Optional[Appointment]:
+    def get_by_id(self, appointment_id: str) -> Appointment | None:
         rows = self._request(
             "GET", params={"id": f"eq.{appointment_id}", "select": "*", "limit": "1"}
         )
         return rows[0] if rows else None
 
-    def list_all(self) -> List[Appointment]:
-        return self._request("GET", params={"select": "*", "order": "start_time.asc,id.asc"})
+    def list_all(self) -> list[Appointment]:
+        return self._request(
+            "GET", params={"select": "*", "order": "start_time.asc,id.asc"}
+        )
 
-    def update(self, appointment_id: str, updated_appointment: Appointment) -> Optional[Appointment]:
+    def update(
+        self, appointment_id: str, updated_appointment: Appointment
+    ) -> Appointment | None:
         rows = self._request(
             "PATCH",
             params={"id": f"eq.{appointment_id}"},
