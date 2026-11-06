@@ -166,10 +166,8 @@ class AppointmentService:
         )
 
         # Create Appointment model with the existing ID
-        updated_appointment = Appointment(
-            id=appointment_id, **updated_data.model_dump()
-        )
-        updated_appointment.duration_minutes = final_duration
+        updated_appointment = Appointment(**updated_data.model_dump())
+        updated_appointment.id = appointment_id
         updated_appointment.start_time = as_utc(updated_appointment.start_time)
 
         # Maintain sync state from existing
@@ -228,12 +226,13 @@ class AppointmentService:
         if not event_id:
             raise HTTPException(
                 status_code=400,
-                detail="Nenhum ID de evento do Google associado a este agendamento",
+                detail="No Google Event ID associated with this appointment",
             )
 
         new_status = self.calendar.get_event_status(event_id)
         if new_status:
             appointment.sync_state.status = new_status
+            appointment.sync_state.last_synced = datetime.now(timezone.utc)
             saved = self.db.update(appointment.id, appointment)
             if saved is None:
                 raise AppointmentDatabaseError(

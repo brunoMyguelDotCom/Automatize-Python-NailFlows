@@ -1,6 +1,6 @@
 # NailFlows API
 
-API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Clientes e agendamentos podem ser armazenados em memória ou no Supabase. A integração com Google Agenda ainda é simulada.
+API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Clientes e agendamentos podem ser armazenados em memória ou no Supabase. A integração com Google Agenda pode ser simulada ou real (OAuth, uma conta por instalação).
 
 ## Primeiros Passos
 
@@ -47,7 +47,7 @@ API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Cliente
    SUPABASE_URL=seu_url_do_supabase_aqui
    SUPABASE_SECRET_KEY=sua_chave_secreta_do_backend_aqui
 
-   # Configuração do Google Agenda (para futura implementação real)
+   # Configuração OAuth do Google Agenda
    GOOGLE_CLIENT_ID=seu_google_client_id
    GOOGLE_CLIENT_SECRET=seu_google_client_secret
    ```
@@ -209,3 +209,60 @@ Os testes verificam o CRUD de clientes, atualizações parciais, validações, c
 
 ## Aviso de Segurança
 Credenciais sensíveis (`.env`) são gerenciadas via `.gitignore`. Nunca envie suas chaves para o repositório.
+
+
+## Conectar o Google Calendar
+
+Esta versão conecta **uma conta/agenda por instalação**, com um único processo
+Uvicorn. A conexão abre diretamente a autorização no Google, sem usuário/senha local.
+Para múltiplas profissionais/contas serão necessários autenticação de usuários e
+armazenamento de tokens por conta. As rotas de agendamentos ainda não exigem login;
+use localmente até configurar autenticação e controle de acesso para publicação.
+
+1. No Google Cloud, habilite Calendar API e configure o consentimento com seu e-mail
+   como usuário de teste. Crie um cliente OAuth do tipo **Aplicativo da Web** e cadastre
+   exatamente `http://localhost:8000/auth/google/callback` como URI de redirecionamento.
+   Autorize o escopo `https://www.googleapis.com/auth/calendar.events`.
+2. Instale `pip install -r requirements.txt` com o ambiente virtual ativo.
+3. Gere a chave de criptografia e copie para `GOOGLE_TOKEN_ENCRYPTION_KEY` no `.env`
+   (não compartilhe o resultado):
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+4. Complete seu `.env`, preservando as configurações do Supabase:
+   ```env
+   CALENDAR_BACKEND=google
+   GOOGLE_CLIENT_ID=seu_id_oauth
+   GOOGLE_CLIENT_SECRET=seu_segredo_oauth
+   GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+   GOOGLE_CALENDAR_ID=primary
+   GOOGLE_TOKEN_ENCRYPTION_KEY=chave_de_criptografia_gerada
+   GOOGLE_TOKEN_FILE=.secrets/google-token.enc
+   ```
+5. Inicie `python main.py`. Abra `http://localhost:8000/auth/google/connect` no navegador.
+   Você será direcionado ao Google. Escolha a conta da agenda e permita acesso aos eventos. Mantenha o mesmo navegador
+   e host (`localhost`) até concluir; o fluxo expira em dez minutos.
+6. Após a mensagem de sucesso, use `/docs` para criar um agendamento futuro com e-mail
+   de teste. Confira o evento na agenda, altere-o e depois exclua-o pela API.
+   **Criação, alteração e exclusão enviam notificações Google à convidada.**
+   A rota `/agendamentos/{id}/sincronizar` consulta a resposta ao convite (aceito,
+   recusado, talvez ou pendente); ela também tenta reenviar alterações pendentes e
+   criar o evento quando o agendamento ainda está sem ID do Google.
+
+Os tokens são criptografados com Fernet, gravados atomicamente em arquivo com acesso
+restrito ao usuário do processo e ignorados pelo Git. Guarde a chave de criptografia:
+perdê-la exige autorizar novamente. O acesso é renovado automaticamente; revogação
+ou expiração do refresh token exige repetir `/auth/google/connect`. Em modo de teste
+externo, o Google pode expirar o refresh token em sete dias.
+
+O banco e o Google não compartilham uma transação: uma falha Google retorna 503,
+mas a criação/alteração pode já estar salva no banco. Consulte os agendamentos e use
+`/sincronizar` com o ID existente para recuperar, evitando cadastrar novamente.
+A verificação de sobreposição considera os agendamentos do NailsFlow, não eventos
+criados diretamente no Google. Para servidor publicado, configure HTTPS, mantenha
+um único worker nesta versão e não registre query strings do callback no proxy
+(elas contêm o código OAuth). `python main.py` desativa o access log do Uvicorn.
+
+`GOOGLE_ADMIN_KEY` não é mais utilizada e pode ser removida do `.env`. A rota de
+conexão está acessível a quem alcança o servidor; em uma instalação pública, proteja
+esse acesso antes de permitir a troca da conta Google conectada.

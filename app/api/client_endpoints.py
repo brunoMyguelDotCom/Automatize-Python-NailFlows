@@ -64,3 +64,4 @@ def delete_client(id: UUID, service: ClientServiceDep):
     if not service.delete_client(str(id)):
         raise HTTPException(status_code=404, detail="Cliente não encontrada")
     return {"detail": "Cliente excluída com sucesso"}
+ 
