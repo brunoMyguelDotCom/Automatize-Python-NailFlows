@@ -1,25 +1,24 @@
-from app.infrastructure.database.base import BaseClientDatabase, BaseDatabase
 from app.domain.models import Appointment, ClientRecord
-from typing import List, Optional, Dict
+from app.infrastructure.database.base import BaseClientDatabase, BaseDatabase
 
 
 class InMemoryDatabase(BaseDatabase):
     def __init__(self):
-        self._storage: Dict[str, Appointment] = {}
+        self._storage: dict[str, Appointment] = {}
 
     def create(self, appointment: Appointment) -> Appointment:
         self._storage[appointment.id] = appointment
         return appointment
 
-    def get_by_id(self, appointment_id: str) -> Optional[Appointment]:
+    def get_by_id(self, appointment_id: str) -> Appointment | None:
         return self._storage.get(appointment_id)
 
-    def list_all(self) -> List[Appointment]:
+    def list_all(self) -> list[Appointment]:
         return list(self._storage.values())
 
     def update(
         self, appointment_id: str, updated_appointment: Appointment
-    ) -> Optional[Appointment]:
+    ) -> Appointment | None:
         if appointment_id in self._storage:
             self._storage[appointment_id] = updated_appointment
             return updated_appointment
@@ -34,21 +33,21 @@ class InMemoryDatabase(BaseDatabase):
 
 class InMemoryClientDatabase(BaseClientDatabase):
     def __init__(self):
-        self._storage: Dict[str, ClientRecord] = {}
+        self._storage: dict[str, ClientRecord] = {}
 
     def create(self, client: ClientRecord) -> ClientRecord:
         self._storage[client.id] = client
         return client
 
-    def get_by_id(self, client_id: str) -> Optional[ClientRecord]:
+    def get_by_id(self, client_id: str) -> ClientRecord | None:
         return self._storage.get(client_id)
 
-    def list_all(self) -> List[ClientRecord]:
+    def list_all(self) -> list[ClientRecord]:
         return list(self._storage.values())
 
     def update(
         self, client_id: str, updated_client: ClientRecord
-    ) -> Optional[ClientRecord]:
+    ) -> ClientRecord | None:
         if client_id not in self._storage:
             return None
         self._storage[client_id] = updated_client

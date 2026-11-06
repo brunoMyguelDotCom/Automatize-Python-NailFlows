@@ -2,6 +2,11 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.2.0] - 2026-11-05
+
+### Added
+- Filtro de status em agendamentos: a listagem de agendamentos agora aceita o parâmetro `active_only`, permitindo filtrar apenas agendamentos ativos ou visualizar todo o histórico (incluindo os cancelados).
+
 ## [0.5.0] - 2026-11-05
 
 ### Added
