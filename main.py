@@ -6,25 +6,28 @@ from fastapi.responses import JSONResponse
 
 from app.api.client_endpoints import get_client_service
 from app.api.client_endpoints import router as client_router
-from app.api.endpoints import get_appointment_service, router
+from app.api.endpoints import get_appointment_service, get_service_service, router
 from app.infrastructure.calendar.google_mock import GoogleMockCalendar
-from app.infrastructure.database.base import ClientDatabaseError, AppointmentDatabaseError
+from app.infrastructure.database.base import (
+    AppointmentDatabaseError,
+    ClientDatabaseError,
+    ServiceDatabaseError,
+)
 from app.infrastructure.database.config import load_supabase_config
 from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
 from app.services.appointment_service import AppointmentService
 from app.services.client_service import ClientService
+from app.services.service_service import ServiceService
 
 
 def get_version_from_changelog():
     try:
         with open("CHANGELOG.md", "r", encoding="utf-8") as f:
             content = f.read()
-            # Look for the first occurrence of [x.x.x]
             match = re.search(r"\[(\d+\.\d+\.\d+)\]", content)
             if match:
                 return match.group(1)
-    except Exception as e:  # noqa: BLE001
-        # Import logger here to avoid circular imports or ensure it's available
+    except Exception as e:
         from app.core.logging_config import logger
 
         logger.warning(f"Could not read version from CHANGELOG.md: {e}")
@@ -54,6 +57,7 @@ from app.core.logging_config import logger
 from app.infrastructure.database.supabase import (
     SupabaseClientDatabase,
     SupabaseDatabase,
+    SupabaseServiceDatabase,
 )
 
 supabase_url, supabase_key = load_supabase_config()
@@ -62,12 +66,12 @@ if supabase_url and supabase_key:
     logger.info("Using real Supabase Database connection")
     db = SupabaseDatabase(supabase_url, supabase_key)
     client_db = SupabaseClientDatabase(supabase_url, supabase_key)
+    service_db = SupabaseServiceDatabase(supabase_url, supabase_key)
 else:
-    logger.warning(
-        "Supabase não configurado. Usando banco de dados em memória."
-    )
+    logger.warning("Supabase não configurado. Usando banco de dados em memória.")
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
+    service_db = None
 
 # As bibliotecas Google só são importadas quando a integração é habilitada.
 backend = os.getenv("CALENDAR_BACKEND", "mock").strip().lower()
@@ -86,12 +90,15 @@ elif backend == "mock":
     calendar = GoogleMockCalendar()
 else:
     raise ValueError("CALENDAR_BACKEND deve ser mock ou google")
-appointment_service = AppointmentService(db, calendar)
+
+appointment_service = AppointmentService(db, calendar, service_db)
 client_service = ClientService(client_db)
+service_service = ServiceService(service_db) if service_db else None
 
 # Inject the service into FastAPI dependencies
 app.dependency_overrides[get_appointment_service] = lambda: appointment_service
 app.dependency_overrides[get_client_service] = lambda: client_service
+app.dependency_overrides[get_service_service] = lambda: service_service
 
 app.include_router(router)
 app.include_router(client_router)
@@ -111,7 +118,17 @@ def handle_client_database_error(request: Request, exc: ClientDatabaseError):
 def handle_appointment_database_error(request: Request, exc: AppointmentDatabaseError):
     return JSONResponse(
         status_code=503,
-        content={"detail": "Não foi possível acessar os agendamentos. Tente novamente."},
+        content={
+            "detail": "Não foi possível acessar os agendamentos. Tente novamente."
+        },
+    )
+
+
+@app.exception_handler(ServiceDatabaseError)
+def handle_service_database_error(request: Request, exc: ServiceDatabaseError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Não foi possível acessar os serviços. Tente novamente."},
     )
 
 

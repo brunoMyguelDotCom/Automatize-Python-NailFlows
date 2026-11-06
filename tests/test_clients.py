@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest import TestCase
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -44,9 +44,9 @@ class ClientEndpointTests(TestCase):
 
     def test_create_list_get_and_delete_client(self):
         self.assertEqual(self.api.get("/clientes/").json(), [])
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         created = self.create_client()
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         self.assertEqual(UUID(created["id"]).version, 4)
         created_at = datetime.fromisoformat(
             created["created_at"].replace("Z", "+00:00")

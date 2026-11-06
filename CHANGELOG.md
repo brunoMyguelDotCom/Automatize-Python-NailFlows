@@ -2,25 +2,45 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.2.0] - 2026-11-05
+
+### Added
+- Filtro de status em agendamentos: a listagem de agendamentos agora aceita o parâmetro `active_only`, permitindo filtrar apenas agendamentos ativos ou visualizar todo o histórico (incluindo os cancelados).
+
+## [0.5.0] - 2026-11-05
+
+### Added
+- Implementação completa do módulo de Serviços (CRUD completo em `/servicos`), permitindo a gestão de tipos de atendimento, duração e status de atividade.
+- Normalização do banco de dados: agendamentos agora utilizam `service_id` (Foreign Key) em vez de texto simples, vinculando-os a serviços reais.
+- Regra de negócio de "Soft Delete" para serviços: deletar um serviço agora apenas o marca como inativo (`active=False`), preservando o histórico de agendamentos.
+- Regra de negócio de "Soft Delete" para agendamentos: cancelar um agendamento agora apenas o marca como inativo (`active=False`), mantendo o histórico para a profissional.
+- Validação de atividade em agendamentos: impedimento de a criação ou alteração de agendamentos utilizando serviços inativos.
+- Lógica de Duração Automática: se a duração não for informada na criação do agendamento, o sistema utiliza automaticamente a duração padrão vinculada ao serviço selecionado.
+- Implementação de tratamento de erros rigoroso para serviços (`ServiceDatabaseError`), seguindo o padrão de qualidade de Clientes e Agendamentos.
+- Atualização do `init.sql` com script de limpeza total e recarregamento de cache do PostgREST (`notify pgrst`) para evitar erros de relacionamento no Supabase.
+- Refatoração dos modelos de API para exigir apenas IDs (`client_id`, `service_id`) no corpo da requisição, removendo a necessidade de enviar objetos completos.
+- Hidratação de dados no retorno de agendamentos: a API agora retorna os objetos completos de Cliente e Serviço após a criação/atualização.
+
 ## [0.4.0] - 2026-11-05
 
 ### Added
-
 - Integração real com Google Calendar para uma conta/agenda por instalação, com criação, atualização e exclusão de eventos e envio de convites à cliente.
 - Fluxo OAuth 2.0 nas rotas `/auth/google/connect` e `/auth/google/callback`, com validação de estado, vínculo ao navegador, PKCE e expiração da autorização pendente.
 - Armazenamento local de tokens criptografados com Fernet, gravação atômica com permissões restritas e renovação automática do acesso.
 - Consulta da resposta ao convite e recuperação de agendamentos sem evento associado pela rota de sincronização.
 - Testes de autorização OAuth, criptografia, renovação de tokens e integração dos agendamentos com o calendário, com chamadas externas simuladas.
 - Guia de configuração OAuth e das variáveis de ambiente no README, incluindo limites da integração e recuperação após falhas.
+- Implementação de persistência real para agendamentos via API REST do Supabase (`SupabaseDatabase`), substituindo a simulação anterior.
+- Suporte a operações CRUD completas para agendamentos no Supabase: criação, leitura, atualização e exclusão.
+- Integração de tratamento de erros específico para agendamentos no Supabase utilizando `AppointmentDatabaseError`.
+- Refatoração da infraestrutura de banco de dados para suportar múltiplos modelos de registro através da classe base `SupabaseRestDatabase`.
 
 ### Changed
-
 - Seleção entre calendário simulado e real pela variável `CALENDAR_BACKEND`.
 - Execução local por `python main.py` restrita a `127.0.0.1`, com access log desativado para evitar registrar códigos OAuth nas URLs.
 - Arquivos de tokens e credenciais Google adicionados ao `.gitignore`.
 
 ### Fixed
-
 - Preservação do ID do evento e do estado de sincronização ao atualizar um agendamento.
 - Registro da data da última sincronização ao consultar o status do convite.
 
@@ -40,7 +60,7 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 - Implementação de documentação Swagger/OpenAPI detalhada para todos os endpoints da API.
 - Adição de metadados globais à aplicação (descrição, versão e contato).
 - Descrições detalhadas e exemplos de valores para todos os campos dos modelos Pydantic.
-- Refatoração dos modelos de domínio para separar `AppointmentCreate` de `Appointment`, garantindo que o `id` do agendamento seja tratado como somente leitura/gerado automaticamente no Swagger.
+- Refatoração dos modelos de domínio para separar `AppointmentCreate` de `Appointment`, garantindo que o `id` do agendamento seja tratado como somente leitura/gerados automaticamente no Swagger.
 - Atualização do `README.md` com a tabela de endpoints e guia de uso da documentação interativa.
 - Implementação de versionamento dinâmico: a versão da API agora é extraída automaticamente do CHANGELOG.md.
 
@@ -71,7 +91,7 @@ Todas as alterações relevantes deste projeto serão documentadas neste arquivo
 O código implementa atualmente o núcleo lógico de um sistema de agendamentos. Ele permite:
 
 1. **Cadastro de Clientes**: Criação, leitura, atualização parcial e exclusão de clientes, com identificação e data de cadastro geradas pelo servidor.
-2. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão de horários, com validações automáticas para impedir agendamentos em datas passadas ou a marcação de dois clientes no mesmo horário (sobreposição).
+2. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão (lógica) de horários, com validações automáticas para impedir agendamentos em datas passadas, sobreposição de horários e uso de serviços inativos.
 3. **Integração com Google Agenda**: Calendário simulado ou integração real via OAuth para uma conta por instalação, com criação, atualização e exclusão de eventos.
 4. **Rastreamento de Status**: Consulta manual da resposta ao convite (confirmado, recusado, talvez ou pendente), com atualização do estado e da data de sincronização no banco interno.
-5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, clientes e agendamentos utilizam a API REST do Supabase.
+5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, a gestão de clientes, serviços e agendamentos utiliza a API REST do Supabase.

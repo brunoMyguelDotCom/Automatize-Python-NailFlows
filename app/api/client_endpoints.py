@@ -1,11 +1,10 @@
-from typing import Annotated, List
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.domain.models import ClientCreate, ClientRecord, ClientUpdate
 from app.services.client_service import ClientService
-
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
 
@@ -30,7 +29,7 @@ def create_client(client: ClientCreate, service: ClientServiceDep):
 
 @router.get(
     "/",
-    response_model=List[ClientRecord],
+    response_model=list[ClientRecord],
     summary="Listar clientes",
     description="Retorna todas as clientes cadastradas.",
 )

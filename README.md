@@ -74,6 +74,14 @@ Para criar todas as tabelas em uma instalação inicial, execute o arquivo
 completo no **SQL Editor** do painel do Supabase. O script executa a criação das
 tabelas e a configuração de acesso em uma única transação.
 
+**⚠️ IMPORTANTE: Atualização de Estrutura**
+Se você já possuía tabelas criadas anteriormente, as mudanças recentes de normalização (substituição de JSON por colunas e introdução de chaves estrangeiras) exigem que você **apague as tabelas existentes** antes de rodar o `init.sql`. No SQL Editor do Supabase, execute:
+```sql
+drop table if exists public.appointments;
+drop table if exists public.clients;
+```
+Em seguida, execute o `init.sql`. Isso é necessário pois `IF NOT EXISTS` não altera a estrutura de tabelas já criadas.
+
 Como alternativa, execute os arquivos SQL de
 `app/infrastructure/database/migrations` no **SQL Editor** do painel do Supabase,
 em ordem de nome. Os scripts criam `clients` e `appointments` e configuram o
@@ -104,9 +112,15 @@ Abaixo estão os endpoints disponíveis. Para testar, utilize o Swagger UI em `/
 | `GET` | `/clientes/` | Listar as clientes cadastradas |
 | `GET` | `/clientes/{id}` | Consultar uma cliente pelo ID |
 | `PATCH` | `/clientes/{id}` | Atualizar parcialmente uma cliente |
+### Clientes
+...
 | `DELETE` | `/clientes/{id}` | Excluir uma cliente do cadastro |
 
+**Regra de Negócio - Deleção de Cliente:** 
+Uma cliente **somente poderá ser excluída se não possuir agendamentos vinculados**. Caso existam agendamentos, a API retornará um erro informando que a cliente possui vínculos ativos. Para excluir a cliente, todos os seus agendamentos devem ser removidos primeiro.
+
 Os nomes dos campos seguem o padrão em inglês já usado pela API:
+...
 
 | Campo | Significado | Enviado no cadastro? |
 | :--- | :--- | :--- |
@@ -146,14 +160,36 @@ Os agendamentos continuam recebendo os dados de contato no campo `client`. O cad
 
 ### 📅 Agendamentos
 
+**Regra de Integridade:** 
+Agendamentos dependem obrigatoriamente de uma cliente existente. Não é permitido criar ou alterar um agendamento para um `client_id` que não esteja cadastrado no sistema.
+
 | Método | Rota | Descrição | Parâmetros Principais |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/agendamentos` | Registrar um novo agendamento | `client` (nome, email, tel), `service`, `start_time`, `duration_minutes` |
+| `POST` | `/agendamentos` | Registrar um novo agendamento | `client_id` (UUID), `service`, `start_time`, `duration_minutes` |
 | `GET` | `/agendamentos` | Listar todos os agendamentos | `start_date`, `end_date` (Opcionais) |
 | `GET` | `/agendamentos/{id}` | Obter detalhes de um agendamento | `id` (Path) |
 | `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente | `id` (Path), Corpo do agendamento |
 | `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento | `id` (Path) |
-| `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronização com o Google Agenda | `id` (Path) |
+| `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronizar com o Google Agenda | `id` (Path) |
+
+**Exemplo de corpo para `POST /agendamentos`:**
+```json
+{
+  "client_id": "550e8400-e29b-41d4-a716-446655440000",
+  "service": "Alongamento em Gel",
+  "start_time": "2026-11-10T14:00:00",
+  "duration_minutes": 120,
+  "sync_state": {
+    "google_event_id": "ev_123456789",
+    "status": "Pending",
+    "last_synced": "2026-11-10T15:00:00Z"
+  }
+}
+```
+
+**Validações Importantes:**
+- `start_time`: Deve ser uma data futura. Agendamentos no passado são rejeitados (`400 Bad Request`).
+- `client_id`: Deve ser um UUID válido de uma cliente já cadastrada no sistema.
 
 Datas com fuso horário são convertidas para UTC. Datas sem fuso, inclusive nos
 filtros, são interpretadas no horário de `America/Sao_Paulo`.
