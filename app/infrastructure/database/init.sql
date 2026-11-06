@@ -36,7 +36,8 @@ create table public.appointments (
     duration_minutes integer not null,
     sync_google_event_id text,
     sync_status text not null default 'Pending',
-    sync_last_synced timestamptz
+    sync_last_synced timestamptz,
+    active boolean not null default true
 );
 
 -- 5. Segurança e RLS

@@ -2,6 +2,17 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [0.5.0] - 2026-11-05
+
+### Added
+- Implementação completa do módulo de Serviços (CRUD completo em `/servicos`), permitindo a gestão de tipos de atendimento, duração e status de atividade.
+- Normalização do banco de dados: agendamentos agora utilizam `service_id` (Foreign Key) em vez de texto simples, vinculando-os a serviços reais.
+- Regra de negócio de "Soft Delete" para serviços: deletar um serviço agora apenas o marca como inativo (`active=False`), preservando o histórico de agendamentos.
+- Validação de atividade em agendamentos: impedimento de a criação ou alteração de agendamentos utilizando serviços inativos.
+- Implementação de tratamento de erros rigoroso para serviços (`ServiceDatabaseError`), seguindo o padrão de qualidade de Clientes e Agendamentos.
+- Atualização do `init.sql` com script de limpeza total e recarregamento de cache do PostgREST (`notify pgrst`) para evitar erros de relacionamento no Supabase.
+- Refatoração dos modelos de API para exigir apenas IDs (`client_id`, `service_id`) no corpo da requisição, removendo a necessidade de enviar objetos completos.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added
@@ -60,4 +71,4 @@ O código implementa atualmente o núcleo lógico de um sistema de agendamentos.
 2. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão de horários, com validações automáticas para impedir agendamentos em datas passadas ou a marcação de dois clientes no mesmo horário (sobreposição).
 3. **Sincronização com Google Agenda (Mock)**: Ao criar ou atualizar um agendamento, o sistema simula a criação de um evento no Google Agenda.
 4. **Rastreamento de Status**: O sistema consegue consultar (via mock) se o cliente confirmou, recusou ou está pendente no convite do Google Agenda, atualizando essa informação no banco de dados interno.
-5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, o cadastro de clientes utiliza a API REST do Supabase; a persistência dos agendamentos permanece simulada.
+5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, o cadastro de clientes e a gestão de serviços utilizam a API REST do Supabase; a persistência dos agendamentos também utiliza o Supabase.

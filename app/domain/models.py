@@ -152,19 +152,14 @@ class AppointmentBase(BaseModel):
         description="Data e hora de início do agendamento (deve ser data futura)",
         example="2026-11-10T14:00:00",
     )
-    duration_minutes: int = Field(
-        ..., description="Duração do serviço em minutos", example=120
+    duration_minutes: Optional[int] = Field(
+        None, description="Duração do serviço em minutos. Se omitido, usa a duração padrão do serviço.", example=120
     )
-    sync_state: SyncState = Field(
-        default_factory=SyncState,
-        description="Estado de sincronização com o calendário",
-    )
-
-    # Removed client and service from Base because they are only for output (hydration)
-    # and their presence in Base might cause them to appear in the request body in some versions of Pydantic/FastAPI
 
 class AppointmentCreate(AppointmentBase):
     """Modelo para criação de agendamento. O ID e o cliente são obrigatórios."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     client_id: str = Field(
         ...,
         description="ID da cliente vinculada ao agendamento",
@@ -180,6 +175,13 @@ class Appointment(AppointmentBase):
     )
     client_id: str = Field(..., description="ID da cliente vinculada")
     service_id: str = Field(..., description="ID do serviço vinculado")
+    sync_state: SyncState = Field(
+        default_factory=SyncState,
+        description="Estado de sincronização com o calendário",
+    )
+    active: bool = Field(
+        default=True, description="Indica se o agendamento está ativo ou foi cancelador"
+    )
     client: Optional[Client] = Field(
         default=None, description="Dados da cliente (carregados via join)"
     )

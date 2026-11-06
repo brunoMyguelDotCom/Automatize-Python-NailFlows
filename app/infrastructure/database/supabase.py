@@ -220,15 +220,25 @@ class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
         self.key = key
 
     def _flatten_appointment(self, appointment: Appointment, partial: bool = False) -> dict:
-        """Converts a structured Appointment domain model into a flat dictionary for the DB."""
-        data = appointment.model_dump(mode="json", exclude={"id", "end_time", "client", "sync_state"})
+        """Converts a structured Appointment domain model into a flat dictionary for the DB.
+        Only includes columns that actually exist in the PostgreSQL table.
+        """
+        # Construct the data dictionary explicitly to avoid sending 'service' or other non-existent columns
+        data = {
+            "start_time": appointment.start_time.isoformat() if hasattr(appointment.start_time, 'isoformat') else appointment.start_time,
+            "duration_minutes": appointment.duration_minutes,
+            "client_id": appointment.client_id,
+            "service_id": appointment.service_id,
+            "sync_google_event_id": appointment.sync_state.google_event_id,
+            "sync_status": appointment.sync_state.status.value,
+            "sync_last_synced": appointment.sync_state.last_synced.isoformat() if appointment.sync_state.last_synced else None,
+        }
 
-        data["client_id"] = appointment.client_id
-        data["service_id"] = appointment.service_id
-
-        data["sync_google_event_id"] = appointment.sync_state.google_event_id
-        data["sync_status"] = appointment.sync_state.status.value
-        data["sync_last_synced"] = appointment.sync_state.last_synced
+        if partial:
+            # For updates, we only send fields that were explicitly changed.
+            # Since we are using the domain model here, we rely on the service layer
+            # to pass the updated object. To be safe, we keep the explicit map.
+            pass
 
         return data
 
