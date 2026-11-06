@@ -160,12 +160,8 @@ class AppointmentBase(BaseModel):
         description="Estado de sincronização com o calendário",
     )
 
-    client: Optional[Client] = Field(
-        default=None, description="Dados da cliente (carregados via join)"
-    )
-    service: Optional[Service] = Field(
-        default=None, description="Dados do serviço (carregados via join)"
-    )
+    # Removed client and service from Base because they are only for output (hydration)
+    # and their presence in Base might cause them to appear in the request body in some versions of Pydantic/FastAPI
 
 class AppointmentCreate(AppointmentBase):
     """Modelo para criação de agendamento. O ID e o cliente são obrigatórios."""

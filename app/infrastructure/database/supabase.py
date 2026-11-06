@@ -10,11 +10,13 @@ from pydantic import ValidationError
 from app.infrastructure.database.base import (
     BaseClientDatabase,
     BaseDatabase,
+    BaseServiceDatabase,
     ClientDatabaseError,
     AppointmentDatabaseError,
+    ServiceDatabaseError,
     ForeignKeyViolationError,
 )
-from app.domain.models import Appointment, ClientRecord
+from app.domain.models import Appointment, ClientRecord, Service
 from app.core.logging_config import logger
 from app.infrastructure.database.config import load_supabase_config
 
@@ -26,14 +28,16 @@ class SupabaseRestDatabase:
     def _request(self, method: str, params=None, data=None):
         url = self.url
         if params:
-            # Use Resource Embedding for Appointment retrievals to fetch nested client data
+            # Use Resource Embedding for Appointment retrievals to fetch nested client and service data
             if self.record_model is Appointment and method == "GET":
-                # Ensure we select all appointment columns and the related client object
                 params = params or {}
-                # If select is not present, add it. If it is, ensure clients(*) is included.
                 select_val = params.get("select", "*")
-                if "clients(*)" not in select_val:
-                    select_val = f"{select_val},{' ' if select_val != '*' else ''}clients(*)"
+                # Ensure we select all appointment columns and the related client and service objects
+                if "clients(*)" not in select_val or "services(*)" not in select_val:
+                    if select_val == "*":
+                        select_val = "*,clients(*),services(*)"
+                    else:
+                        select_val = f"{select_val},clients(*),services(*)"
                 params["select"] = select_val
 
             url = f"{url}?{urlencode(params)}"
@@ -43,11 +47,9 @@ class SupabaseRestDatabase:
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
-        # As chaves legadas são JWTs; chaves novas usam somente o header apikey.
         if self.key.startswith("eyJ"):
             headers["Authorization"] = f"Bearer {self.key}"
 
-        # Helper to handle datetime serialization in JSON
         def json_serial(obj):
             if isinstance(obj, datetime):
                 return obj.isoformat()
@@ -61,7 +63,6 @@ class SupabaseRestDatabase:
             if not isinstance(rows, list):
                 raise ValueError("Expected a list of database records")
 
-            # Hydrate records if the record_model is Appointment
             processed_rows = []
             for row in rows:
                 if self.record_model is Appointment:
@@ -70,7 +71,6 @@ class SupabaseRestDatabase:
 
             return [self.record_model.model_validate(row) for row in processed_rows]
         except HTTPError as exc:
-            # Read the error body to identify the cause before closing the connection
             try:
                 error_body = exc.read().decode("utf-8")
                 logger.error("Supabase HTTP Error %s: %s", exc.code, error_body)
@@ -78,12 +78,12 @@ class SupabaseRestDatabase:
                 if "foreign_key_violation" in error_body or "violates foreign key constraint" in error_body or "23503" in error_body:
                     raise ForeignKeyViolationError("Violação de chave estrangeira detectada no banco de dados") from exc
             except ForeignKeyViolationError:
-                # Re-raise the specific violation error to be handled by the service
                 raise
             except Exception as read_exc:
                 logger.error("Could not read Supabase error body: %s", str(read_exc))
 
             exc.close()
+            # Use the record_model's specific database_error to avoid generic errors
             raise self.database_error(
                 "Falha ao acessar o banco de dados"
             ) from exc
@@ -94,8 +94,7 @@ class SupabaseRestDatabase:
             ) from exc
 
     def _hydrate_appointment(self, row: dict) -> dict:
-        """Reconstructs nested Appointment models from flat database columns and joined client data."""
-        # Map client from the joined object returned by Supabase
+        """Reconstructs nested Appointment models from flat database columns and joined client/service data."""
         client_data = row.pop("clients", None)
         if isinstance(client_data, dict):
             row["client"] = client_data
@@ -103,6 +102,14 @@ class SupabaseRestDatabase:
             row["client"] = client_data[0]
         else:
             row["client"] = None
+
+        service_data = row.pop("services", None)
+        if isinstance(service_data, dict):
+            row["service"] = service_data
+        elif isinstance(service_data, list) and service_data:
+            row["service"] = service_data[0]
+        else:
+            row["service"] = None
 
         row["sync_state"] = {
             "google_event_id": row.pop("sync_google_event_id", None),
@@ -153,10 +160,50 @@ class SupabaseClientDatabase(SupabaseRestDatabase, BaseClientDatabase):
             rows = self._request("DELETE", params={"id": f"eq.{client_id}"})
             return bool(rows)
         except self.database_error as exc:
-            # O Supabase retorna erro 409 ou 400 em violações de FK dependendo da config
-            # Aqui capturamos a falha genérica e permitimos que a camada de serviço/API
-            # trate a mensagem específica de "cliente com agendamentos"
             logger.error("Falha ao deletar cliente %s: %s", client_id, str(exc))
+            raise exc
+
+
+class SupabaseServiceDatabase(SupabaseRestDatabase, BaseServiceDatabase):
+    """Persistência de serviços pela API REST do Supabase."""
+
+    def __init__(self, url: str, key: str):
+        self.url = f"{url.rstrip('/')}/rest/v1/services"
+        self.key = key
+        self.record_model = Service
+        self.database_error = ServiceDatabaseError
+
+    def create(self, service: Service) -> Service:
+        rows = self._request("POST", data=service.model_dump(mode="json"))
+        if not rows:
+            raise ServiceDatabaseError("O banco não retornou o serviço cadastrado")
+        return rows[0]
+
+    def get_by_id(self, service_id: str) -> Optional[Service]:
+        rows = self._request(
+            "GET", params={"id": f"eq.{service_id}", "select": "*", "limit": "1"}
+        )
+        return rows[0] if rows else None
+
+    def list_all(self) -> List[Service]:
+        return self._request("GET", params={"select": "*", "order": "name.asc,id.asc"})
+
+    def update(
+        self, service_id: str, updated_service: Service
+    ) -> Optional[Service]:
+        rows = self._request(
+            "PATCH",
+            params={"id": f"eq.{service_id}"},
+            data=updated_service.model_dump(mode="json"),
+        )
+        return rows[0] if rows else None
+
+    def delete(self, service_id: str) -> bool:
+        try:
+            rows = self._request("DELETE", params={"id": f"eq.{service_id}"})
+            return bool(rows)
+        except self.database_error as exc:
+            logger.error("Falha ao deletar serviço %s: %s", service_id, str(exc))
             raise exc
 
 
@@ -174,13 +221,11 @@ class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
 
     def _flatten_appointment(self, appointment: Appointment, partial: bool = False) -> dict:
         """Converts a structured Appointment domain model into a flat dictionary for the DB."""
-        # Basic fields
         data = appointment.model_dump(mode="json", exclude={"id", "end_time", "client", "sync_state"})
 
-        # Client ID (The normalized reference)
         data["client_id"] = appointment.client_id
+        data["service_id"] = appointment.service_id
 
-        # Sync state fields
         data["sync_google_event_id"] = appointment.sync_state.google_event_id
         data["sync_status"] = appointment.sync_state.status.value
         data["sync_last_synced"] = appointment.sync_state.last_synced

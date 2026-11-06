@@ -15,10 +15,27 @@ def as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from typing import List, Optional, Union
+from fastapi import HTTPException
+
+from app.domain.models import Appointment, SyncStatus, AppointmentCreate
+from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError, ForeignKeyViolationError, BaseServiceDatabase
+from app.infrastructure.calendar.base import BaseCalendar
+
+def as_utc(value: datetime) -> datetime:
+    # Datas sem fuso da API são interpretadas no horário de São Paulo.
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+    return value.astimezone(timezone.utc)
+
+
 class AppointmentService:
-    def __init__(self, db: BaseDatabase, calendar: BaseCalendar):
+    def __init__(self, db: BaseDatabase, calendar: BaseCalendar, service_db: Optional[BaseServiceDatabase] = None):
         self.db = db
         self.calendar = calendar
+        self.service_db = service_db
 
     def _validate_appointment(
         self, appointment: Appointment, ignore_id: Optional[str] = None
@@ -46,6 +63,18 @@ class AppointmentService:
                 )
 
     def create_appointment(self, appointment_data: AppointmentCreate) -> Appointment:
+        # Validate if the service is active
+        if self.service_db:
+            service = self.service_db.get_by_id(appointment_data.service_id)
+            if service is None:
+                raise HTTPException(
+                    status_code=400, detail="O serviço informado não existe no sistema"
+                )
+            if not service.active:
+                raise HTTPException(
+                    status_code=400, detail="O serviço selecionado está inativo e não pode ser utilizado para novos agendamentos"
+                )
+
         # Convert AppointmentCreate to Appointment to generate ID
         appointment = Appointment(**appointment_data.model_dump())
         appointment.start_time = as_utc(appointment.start_time)
@@ -97,6 +126,18 @@ class AppointmentService:
         if not existing:
             raise HTTPException(status_code=404, detail="Appointment not found")
 
+        # Validate if the service is active (only if service_id is being changed)
+        if self.service_db:
+            service = self.service_db.get_by_id(updated_data.service_id)
+            if service is None:
+                raise HTTPException(
+                    status_code=400, detail="O serviço informado não existe no sistema"
+                )
+            if not service.active:
+                raise HTTPException(
+                    status_code=400, detail="O serviço selecionado está inativo e não pode ser utilizado para novos agendamentos"
+                )
+
         # Create Appointment model with the existing ID
         updated_appointment = Appointment(**updated_data.model_dump())
         updated_appointment.id = appointment_id
@@ -127,6 +168,40 @@ class AppointmentService:
             )
 
         return updated_appointment
+
+    def cancel_appointment(self, appointment_id: str) -> bool:
+        appointment = self.get_appointment(appointment_id)
+        if not appointment:
+            return False
+
+        # Remove from Google Calendar
+        if appointment.sync_state.google_event_id:
+            self.calendar.delete_event(appointment.sync_state.google_event_id)
+
+        return self.db.delete(appointment_id)
+
+    def synchronize_status(self, appointment_id: str) -> Appointment:
+        appointment = self.get_appointment(appointment_id)
+        if not appointment:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
+        event_id = appointment.sync_state.google_event_id
+        if not event_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No Google Event ID associated with this appointment",
+            )
+
+        # Poll Google Calendar for status
+        new_status = self.calendar.get_event_status(event_id)
+        if new_status:
+            appointment.sync_state.status = new_status
+            saved = self.db.update(appointment.id, appointment)
+            if saved is None:
+                raise AppointmentDatabaseError("Agendamento não encontrado ao salvar sincronização")
+            appointment = saved
+
+        return appointment
 
     def cancel_appointment(self, appointment_id: str) -> bool:
         appointment = self.get_appointment(appointment_id)
