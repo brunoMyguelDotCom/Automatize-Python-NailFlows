@@ -1,9 +1,9 @@
 from typing import List
-
 from fastapi import HTTPException
+from app.core.logging_config import logger
 
 from app.domain.models import ClientCreate, ClientRecord, ClientUpdate
-from app.infrastructure.database.base import BaseClientDatabase
+from app.infrastructure.database.base import BaseClientDatabase, ForeignKeyViolationError
 
 
 class ClientService:
@@ -35,4 +35,13 @@ class ClientService:
         return saved_client
 
     def delete_client(self, client_id: str) -> bool:
-        return self.db.delete(client_id)
+        try:
+            return self.db.delete(client_id)
+        except ForeignKeyViolationError:
+            raise HTTPException(
+                status_code=400,
+                detail="Não é possível deletar a cliente pois ela possui agendamentos vinculados"
+            )
+        except Exception as e:
+            logger.error("Erro inesperado ao deletar cliente: %s", str(e))
+            raise HTTPException(status_code=503, detail="Falha ao acessar o banco de dados")

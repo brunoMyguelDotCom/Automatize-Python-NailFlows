@@ -15,13 +15,19 @@ create table if not exists public.clients (
     created_at timestamptz not null default now()
 );
 
--- Agendamentos: vinculado a um cliente via client_id.
--- sync_state contém google_event_id, status e last_synced quando disponíveis.
--- end_time é calculado pela aplicação a partir do início e da duração.
+-- Cadastro de serviços.
+create table if not exists public.services (
+    id uuid primary key default gen_random_uuid(),
+    name text not null check (length(trim(name)) > 0),
+    duration_minutes integer not null check (duration_minutes > 0),
+    active boolean not null default true
+);
+
+-- Agendamentos: vinculado a um cliente e a um serviço.
 create table if not exists public.appointments (
     id uuid primary key default gen_random_uuid(),
     client_id uuid not null references public.clients(id) on delete restrict,
-    service text not null,
+    service_id uuid not null references public.services(id) on delete restrict,
     start_time timestamptz not null,
     duration_minutes integer not null,
     sync_google_event_id text,
@@ -30,11 +36,13 @@ create table if not exists public.appointments (
 );
 
 alter table public.clients enable row level security;
+alter table public.services enable row level security;
 alter table public.appointments enable row level security;
 
 -- Acesso pelo backend com chave secreta ou service_role.
 -- Não são criadas políticas de acesso para usuários anônimos/autenticados.
 grant select, insert, update, delete on public.clients to service_role;
+grant select, insert, update, delete on public.services to service_role;
 grant select, insert, update, delete on public.appointments to service_role;
 
 commit;

@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional
+from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -11,6 +12,7 @@ from app.infrastructure.database.base import (
     BaseDatabase,
     ClientDatabaseError,
     AppointmentDatabaseError,
+    ForeignKeyViolationError,
 )
 from app.domain.models import Appointment, ClientRecord
 from app.core.logging_config import logger
@@ -44,7 +46,14 @@ class SupabaseRestDatabase:
         # As chaves legadas são JWTs; chaves novas usam somente o header apikey.
         if self.key.startswith("eyJ"):
             headers["Authorization"] = f"Bearer {self.key}"
-        body = json.dumps(data).encode("utf-8") if data is not None else None
+
+        # Helper to handle datetime serialization in JSON
+        def json_serial(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            raise TypeError(f"Type {type(obj)} not serializable")
+
+        body = json.dumps(data, default=json_serial).encode("utf-8") if data is not None else None
         request = Request(url, data=body, headers=headers, method=method)
         try:
             with urlopen(request, timeout=10) as response:
@@ -61,7 +70,19 @@ class SupabaseRestDatabase:
 
             return [self.record_model.model_validate(row) for row in processed_rows]
         except HTTPError as exc:
-            logger.error("Supabase request failed (HTTP %s)", exc.code)
+            # Read the error body to identify the cause before closing the connection
+            try:
+                error_body = exc.read().decode("utf-8")
+                logger.error("Supabase HTTP Error %s: %s", exc.code, error_body)
+
+                if "foreign_key_violation" in error_body or "violates foreign key constraint" in error_body or "23503" in error_body:
+                    raise ForeignKeyViolationError("Violação de chave estrangeira detectada no banco de dados") from exc
+            except ForeignKeyViolationError:
+                # Re-raise the specific violation error to be handled by the service
+                raise
+            except Exception as read_exc:
+                logger.error("Could not read Supabase error body: %s", str(read_exc))
+
             exc.close()
             raise self.database_error(
                 "Falha ao acessar o banco de dados"

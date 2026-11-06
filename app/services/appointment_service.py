@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 from fastapi import HTTPException
 
 from app.domain.models import Appointment, SyncStatus, AppointmentCreate
-from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError
+from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError, ForeignKeyViolationError
 from app.infrastructure.calendar.base import BaseCalendar
 
 
@@ -52,7 +52,12 @@ class AppointmentService:
         self._validate_appointment(appointment)
 
         # Save to DB
-        appointment = self.db.create(appointment)
+        try:
+            appointment = self.db.create(appointment)
+        except ForeignKeyViolationError:
+            raise HTTPException(
+                status_code=400, detail="O cliente informado não existe no sistema"
+            )
 
         # Sync with Google Calendar
         event_id = self.calendar.create_event(appointment)
@@ -104,7 +109,13 @@ class AppointmentService:
         self._validate_appointment(updated_appointment, ignore_id=appointment_id)
 
         # Save to DB
-        saved = self.db.update(appointment_id, updated_appointment)
+        try:
+            saved = self.db.update(appointment_id, updated_appointment)
+        except ForeignKeyViolationError:
+            raise HTTPException(
+                status_code=400, detail="O cliente informado não existe no sistema"
+            )
+
         if saved is None:
             raise HTTPException(status_code=404, detail="Appointment not found")
         updated_appointment = saved
