@@ -1,33 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Annotated, Optional
 from datetime import datetime
-from app.domain.models import Appointment, AppointmentCreate
+from app.domain.models import Appointment, AppointmentCreate, Service, ServiceCreate, ServiceUpdate
 from app.services.appointment_service import AppointmentService
+from app.services.service_service import ServiceService
 
-router = APIRouter(prefix="/agendamentos", tags=["agendamentos"])
+router = APIRouter()
 
+# --- Agendamentos ---
+appointment_router = APIRouter(prefix="/agendamentos", tags=["agendamentos"])
 
-# Dependency to get the service (will be injected by main.py)
 def get_appointment_service() -> AppointmentService:
-    # This function will be overridden in main.py using app.dependency_overrides
     raise NotImplementedError("This dependency is provided by main.py")
-
 
 AppointmentServiceDep = Annotated[AppointmentService, Depends(get_appointment_service)]
 
-
-@router.post(
+@appointment_router.post(
     "/",
     response_model=Appointment,
     status_code=201,
     summary="Criar novo agendamento",
-    description="Cria um novo agendamento no sistema. O ID do agendamento é gerado automaticamente pelo servidor.",
+    description="Cria um novo agendamento no sistema. O agendamento depende de um client_id e service_id válidos e a data deve ser futura.",
 )
 def create_appointment(appointment: AppointmentCreate, service: AppointmentServiceDep):
     return service.create_appointment(appointment)
 
-
-@router.get(
+@appointment_router.get(
     "/",
     response_model=List[Appointment],
     summary="Listar todos os agendamentos",
@@ -40,8 +38,7 @@ def list_appointments(
 ):
     return service.list_appointments(start_date=start_date, end_date=end_date)
 
-
-@router.get(
+@appointment_router.get(
     "/{id}",
     response_model=Appointment,
     summary="Obter agendamento por ID",
@@ -53,8 +50,7 @@ def get_appointment(id: str, service: AppointmentServiceDep):
         raise HTTPException(status_code=404, detail="Agendamento não encontrado")
     return appointment
 
-
-@router.patch(
+@appointment_router.patch(
     "/{id}",
     response_model=Appointment,
     summary="Atualizar agendamento",
@@ -68,8 +64,7 @@ def update_appointment(
     except HTTPException as e:
         raise e
 
-
-@router.delete(
+@appointment_router.delete(
     "/{id}",
     summary="Cancelar agendamento",
     description="Remove um agendamento do sistema e cancela a reserva.",
@@ -80,8 +75,7 @@ def delete_appointment(id: str, service: AppointmentServiceDep):
         raise HTTPException(status_code=404, detail="Agendamento não encontrado")
     return {"detail": "Agendamento cancelado com sucesso"}
 
-
-@router.post(
+@appointment_router.post(
     "/{id}/sincronizar",
     response_model=Appointment,
     summary="Sincronizar com Google Calendar",
@@ -89,3 +83,67 @@ def delete_appointment(id: str, service: AppointmentServiceDep):
 )
 def sync_appointment(id: str, service: AppointmentServiceDep):
     return service.synchronize_status(id)
+
+# --- Serviços ---
+service_router = APIRouter(prefix="/servicos", tags=["serviços"])
+
+def get_service_service() -> ServiceService:
+    raise NotImplementedError("This dependency is provided by main.py")
+
+ServiceServiceDep = Annotated[ServiceService, Depends(get_service_service)]
+
+@service_router.post(
+    "/",
+    response_model=Service,
+    status_code=201,
+    summary="Criar novo serviço",
+    description="Cadastra um novo serviço no sistema.",
+)
+def create_service(service_data: ServiceCreate, service: ServiceServiceDep):
+    return service.create_service(service_data)
+
+@service_router.get(
+    "/",
+    response_model=List[Service],
+    summary="Listar todos os serviços",
+    description="Retorna uma lista de todos os serviços cadastrados.",
+)
+def list_services(
+    service: ServiceServiceDep,
+    active_only: bool = False
+):
+    return service.list_services(active_only=active_only)
+
+@service_router.get(
+    "/{id}",
+    response_model=Service,
+    summary="Obter serviço por ID",
+    description="Retorna os detalhes de um serviço específico.",
+)
+def get_service(id: str, service: ServiceServiceDep):
+    return service.get_service(id)
+
+@service_router.patch(
+    "/{id}",
+    response_model=Service,
+    summary="Atualizar serviço",
+    description="Atualiza parcialmente os dados de um serviço existente.",
+)
+def update_service(
+    id: str, service_data: ServiceUpdate, service: ServiceServiceDep
+):
+    return service.update_service(id, service_data)
+
+@service_router.delete(
+    "/{id}",
+    summary="Deletar serviço",
+    description="Remove um serviço do sistema. Bloqueado se houver agendamentos vinculados.",
+)
+def delete_service(id: str, service: ServiceServiceDep):
+    success = service.delete_service(id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Serviço não encontrado")
+    return {"detail": "Serviço inativado com sucesso"}
+
+router.include_router(appointment_router)
+router.include_router(service_router)

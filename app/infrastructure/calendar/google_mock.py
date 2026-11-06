@@ -15,7 +15,10 @@ class GoogleMockCalendar(BaseCalendar):
         event_id = f"google_{uuid.uuid4().hex[:8]}"
         # Mocking that Google creates the event with PENDING status
         self._events[event_id] = (appointment, SyncStatus.PENDING)
-        logger.info(f"Event created: {event_id} for client {appointment.client.name}")
+
+        # Use client_id because the client object is not hydrated during creation
+        client_label = appointment.client.name if appointment.client else appointment.client_id
+        logger.info(f"Event created: {event_id} for client {client_label}")
         return event_id
 
     def update_event(self, event_id: str, appointment: Appointment) -> bool:

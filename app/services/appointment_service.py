@@ -4,9 +4,8 @@ from typing import List, Optional, Union
 from fastapi import HTTPException
 
 from app.domain.models import Appointment, SyncStatus, AppointmentCreate
-from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError
+from app.infrastructure.database.base import BaseDatabase, AppointmentDatabaseError, ForeignKeyViolationError, BaseServiceDatabase
 from app.infrastructure.calendar.base import BaseCalendar
-
 
 def as_utc(value: datetime) -> datetime:
     # Datas sem fuso da API são interpretadas no horário de São Paulo.
@@ -16,9 +15,10 @@ def as_utc(value: datetime) -> datetime:
 
 
 class AppointmentService:
-    def __init__(self, db: BaseDatabase, calendar: BaseCalendar):
+    def __init__(self, db: BaseDatabase, calendar: BaseCalendar, service_db: Optional[BaseServiceDatabase] = None):
         self.db = db
         self.calendar = calendar
+        self.service_db = service_db
 
     def _validate_appointment(
         self, appointment: Appointment, ignore_id: Optional[str] = None
@@ -46,13 +46,42 @@ class AppointmentService:
                 )
 
     def create_appointment(self, appointment_data: AppointmentCreate) -> Appointment:
+        # Validate if the service is active and get its default duration
+        default_duration = None
+        if self.service_db:
+            service = self.service_db.get_by_id(appointment_data.service_id)
+            if service is None:
+                raise HTTPException(
+                    status_code=400, detail="O serviço informado não existe no sistema"
+                )
+            if not service.active:
+                raise HTTPException(
+                    status_code=400, detail="O serviço selecionado está inativo e não pode ser utilizado para novos agendamentos"
+                )
+            default_duration = service.duration_minutes
+
+        # Logic for duration: use provided value or fall back to service default
+        final_duration = appointment_data.duration_minutes
+        if final_duration is None:
+            if default_duration is None:
+                raise HTTPException(
+                    status_code=400, detail="Duração não informada e serviço não possui duração padrão"
+                )
+            final_duration = default_duration
+
         # Convert AppointmentCreate to Appointment to generate ID
         appointment = Appointment(**appointment_data.model_dump())
+        appointment.duration_minutes = final_duration
         appointment.start_time = as_utc(appointment.start_time)
         self._validate_appointment(appointment)
 
         # Save to DB
-        appointment = self.db.create(appointment)
+        try:
+            appointment = self.db.create(appointment)
+        except ForeignKeyViolationError:
+            raise HTTPException(
+                status_code=400, detail="O cliente informado não existe no sistema"
+            )
 
         # Sync with Google Calendar
         event_id = self.calendar.create_event(appointment)
@@ -63,7 +92,8 @@ class AppointmentService:
                 raise AppointmentDatabaseError("Agendamento não encontrado ao salvar sincronização")
             appointment = saved
 
-        return appointment
+        # IMPORTANT: Hydrate the final object before returning to ensure client and service data are present
+        return self.get_appointment(appointment.id)
 
     def get_appointment(self, appointment_id: str) -> Optional[Appointment]:
         return self.db.get_by_id(appointment_id)
@@ -92,19 +122,45 @@ class AppointmentService:
         if not existing:
             raise HTTPException(status_code=404, detail="Appointment not found")
 
+        # Validate if the service is active and get its default duration
+        default_duration = None
+        if self.service_db:
+            service = self.service_db.get_by_id(updated_data.service_id)
+            if service is None:
+                raise HTTPException(
+                    status_code=400, detail="O serviço informado não existe no sistema"
+                )
+            if not service.active:
+                raise HTTPException(
+                    status_code=400, detail="O serviço selecionado está inativo e não pode ser utilizado para novos agendamentos"
+                )
+            default_duration = service.duration_minutes
+
+        # Logic for duration: use provided value or fall back to service default
+        final_duration = updated_data.duration_minutes
+        if final_duration is None:
+            if default_duration is None:
+                raise HTTPException(
+                    status_code=400, detail="Duração não informada e serviço não possui duração padrão"
+                )
+            final_duration = default_duration
+
         # Create Appointment model with the existing ID
         updated_appointment = Appointment(**updated_data.model_dump())
         updated_appointment.id = appointment_id
+        updated_appointment.duration_minutes = final_duration
         updated_appointment.start_time = as_utc(updated_appointment.start_time)
-
-        # Preserve existing sync_state if it was not explicitly changed in updated_data
-        # (Depending on requirements, you might want to allow updating sync_state via API)
-        # For now, we merge the ID and validate.
 
         self._validate_appointment(updated_appointment, ignore_id=appointment_id)
 
         # Save to DB
-        saved = self.db.update(appointment_id, updated_appointment)
+        try:
+            saved = self.db.update(appointment_id, updated_appointment)
+        except ForeignKeyViolationError:
+            raise HTTPException(
+                status_code=400, detail="O cliente informado não existe no sistema"
+            )
+
         if saved is None:
             raise HTTPException(status_code=404, detail="Appointment not found")
         updated_appointment = saved
@@ -115,18 +171,30 @@ class AppointmentService:
                 updated_appointment.sync_state.google_event_id, updated_appointment
             )
 
-        return updated_appointment
+        return self.get_appointment(updated_appointment.id)
 
     def cancel_appointment(self, appointment_id: str) -> bool:
-        appointment = self.get_appointment(appointment_id)
-        if not appointment:
-            return False
+        """
+        Implementa a deleção lógica (soft delete).
+        Em vez de remover do banco, define o agendamento como inativo.
+        """
+        try:
+            appointment = self.get_appointment(appointment_id)
+            if not appointment:
+                return False
 
-        # Remove from Google Calendar
-        if appointment.sync_state.google_event_id:
-            self.calendar.delete_event(appointment.sync_state.google_event_id)
+            # Remove from Google Calendar if it exists
+            if appointment.sync_state.google_event_id:
+                self.calendar.delete_event(appointment.sync_state.google_event_id)
 
-        return self.db.delete(appointment_id)
+            # Update as inactive
+            updated_appointment = Appointment(**appointment.model_dump())
+            updated_appointment.active = False
+
+            return self.db.update(appointment_id, updated_appointment) is not None
+        except Exception as e:
+            logger.error("Erro inesperado ao cancelar agendamento: %s", str(e))
+            raise HTTPException(status_code=503, detail="Falha ao acessar o banco de dados")
 
     def synchronize_status(self, appointment_id: str) -> Appointment:
         appointment = self.get_appointment(appointment_id)
