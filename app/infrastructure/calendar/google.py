@@ -128,12 +128,13 @@ class GoogleCalendar(BaseCalendar):
                 "Não foi possível carregar a cliente e o serviço do agendamento para sincronizar a agenda."
             )
         return {
-            "summary": f"Cris Merlos Nail Designer — {appointment.service.name}",
+            "summary": f"💅 {appointment.service.name} - Cris Merlos",
             "description": (
-            "Seu momento de cuidado está agendado!\n\n"
+            " ✨ Seu momento de cuidado está agendado! ✨\n\n"
             f"Serviço: {appointment.service.name}\n"
             f"Duração: {appointment.duration_minutes} minutos\n\n"
-            "Confirme sua presença respondendo ao convite."
+            "Confirme sua presença respondendo ao convite. 💌"
+            "Esperamos você! 💕"
         ),
             "start": {"dateTime": as_utc(appointment.start_time).isoformat()},
             "end": {"dateTime": as_utc(appointment.end_time).isoformat()},
