@@ -123,8 +123,18 @@ class GoogleCalendar(BaseCalendar):
     @staticmethod
     def _body(appointment):
         from app.services.appointment_service import as_utc
+        if appointment.client is None or appointment.service is None:
+            raise CalendarError(
+                "Não foi possível carregar a cliente e o serviço do agendamento para sincronizar a agenda."
+            )
         return {
-            "summary": f"{appointment.service} — {appointment.client.name}",
+            "summary": f"Cris Merlos Nail Designer — {appointment.service.name}",
+            "description": (
+            "Seu momento de cuidado está agendado!\n\n"
+            f"Serviço: {appointment.service.name}\n"
+            f"Duração: {appointment.duration_minutes} minutos\n\n"
+            "Confirme sua presença respondendo ao convite."
+        ),
             "start": {"dateTime": as_utc(appointment.start_time).isoformat()},
             "end": {"dateTime": as_utc(appointment.end_time).isoformat()},
             "attendees": [{"email": str(appointment.client.email)}],

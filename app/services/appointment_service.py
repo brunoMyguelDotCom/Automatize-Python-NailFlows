@@ -167,6 +167,7 @@ class AppointmentService:
 
         # Create Appointment model with the existing ID
         updated_appointment = Appointment(**updated_data.model_dump())
+        updated_appointment.duration_minutes = final_duration
         updated_appointment.id = appointment_id
         updated_appointment.start_time = as_utc(updated_appointment.start_time)
 
@@ -232,7 +233,7 @@ class AppointmentService:
         new_status = self.calendar.get_event_status(event_id)
         if new_status:
             appointment.sync_state.status = new_status
-            appointment.sync_state.last_synced = datetime.now(timezone.utc)
+            appointment.sync_state.last_synced = datetime.now(UTC)
             saved = self.db.update(appointment.id, appointment)
             if saved is None:
                 raise AppointmentDatabaseError(
