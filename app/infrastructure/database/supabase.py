@@ -246,6 +246,7 @@ class SupabaseDatabase(SupabaseRestDatabase, BaseDatabase):
             "sync_last_synced": appointment.sync_state.last_synced.isoformat()
             if appointment.sync_state.last_synced
             else None,
+            "active": appointment.active,
         }
 
         if partial:

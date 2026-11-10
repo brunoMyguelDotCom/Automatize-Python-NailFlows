@@ -65,6 +65,7 @@ class AppointmentSupabaseTests(TestCase):
 
     def test_update_persists_sync_state_without_computed_column(self):
         self.appointment.sync_state.google_event_id = "google_test"
+        self.appointment.active = False
         self.row = self.appointment.model_dump(mode="json", exclude={"end_time"})
         self.respond([self.row])
         self.assertEqual(
@@ -76,6 +77,7 @@ class AppointmentSupabaseTests(TestCase):
         self.assertNotIn("id", data)
         self.assertNotIn("end_time", data)
         self.assertEqual(data["sync_state"]["google_event_id"], "google_test")
+        self.assertFalse(data["active"])
         self.respond([])
         self.assertIsNone(self.db.update(self.appointment.id, self.appointment))
 
