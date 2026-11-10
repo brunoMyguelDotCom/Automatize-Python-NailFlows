@@ -202,21 +202,60 @@ class AppointmentService:
         """
         try:
             appointment = self.get_appointment(appointment_id)
-            if not appointment:
-                return False
-
-            if appointment.sync_state.google_event_id:
-                self.calendar.delete_event(appointment.sync_state.google_event_id)
-
-            updated_appointment = Appointment(**appointment.model_dump())
-            updated_appointment.active = False
-
-            return self.db.update(appointment_id, updated_appointment) is not None
-        except Exception as e:
-            logger.error("Erro inesperado ao cancelar agendamento: %s", str(e))
+        except Exception:
+            logger.exception(
+                "Falha ao carregar agendamento para cancelamento "
+                "phase=database_read appointment_id=%s",
+                appointment_id,
+            )
             raise HTTPException(
                 status_code=503, detail="Falha ao acessar o banco de dados"
             )
+
+        if not appointment:
+            logger.warning(
+                "Agendamento não encontrado para cancelamento appointment_id=%s",
+                appointment_id,
+            )
+            return False
+
+        google_event_id = appointment.sync_state.google_event_id
+        if google_event_id:
+            try:
+                self.calendar.delete_event(google_event_id)
+            except Exception:
+                logger.exception(
+                    "Falha ao excluir evento do Google "
+                    "phase=google_delete appointment_id=%s google_event_id=%s",
+                    appointment_id,
+                    google_event_id,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Falha ao cancelar o evento no Google Calendar",
+                )
+
+        updated_appointment = Appointment(**appointment.model_dump())
+        updated_appointment.active = False
+        try:
+            saved = self.db.update(appointment_id, updated_appointment)
+        except Exception:
+            logger.exception(
+                "Falha ao atualizar status do agendamento "
+                "phase=database_update appointment_id=%s active=false",
+                appointment_id,
+            )
+            raise HTTPException(
+                status_code=503, detail="Falha ao acessar o banco de dados"
+            )
+
+        logger.info(
+            "Agendamento cancelado phase=completed appointment_id=%s active=false "
+            "google_event_id_present=%s",
+            appointment_id,
+            bool(google_event_id),
+        )
+        return saved is not None
 
     def synchronize_status(self, appointment_id: str) -> Appointment:
         appointment = self.get_appointment(appointment_id)

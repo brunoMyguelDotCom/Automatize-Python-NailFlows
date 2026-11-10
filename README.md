@@ -1,357 +1,382 @@
 # NailFlows API
 
-API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Clientes e agendamentos podem ser armazenados em memória ou no Supabase. A integração com Google Agenda pode ser simulada ou real (OAuth, uma conta por instalação).
+API FastAPI para cadastro de clientes, serviços e agendamentos de Nail Designers.
+A aplicação pode usar memória para desenvolvimento ou Supabase para persistência.
+A integração com Google Calendar pode ser simulada ou real, com uma agenda por
+instalação do backend.
 
-## Primeiros Passos
+## Requisitos
 
-### Pré-requisitos
-- Python 3.9+
-- Ferramenta de ambiente virtual (`venv` ou `conda`)
+- Python 3.10 a 3.13
+- Um ambiente virtual Python
+- Supabase, quando a persistência real for necessária
+- Google Cloud OAuth, somente quando `CALENDAR_BACKEND=google`
 
-### Instalacao e Configuracao
+## Instalação local
 
-1. **Clonar o repositório:**
-   ```bash
-   git clone <repository-url>
-   cd "AUTOMATIZE - NailFlows"
-   ```
+```bash
+git clone <repository-url>
+cd "AUTOMATIZE - NailFlows"
+python -m venv .venv
+source .venv/bin/activate       # Linux/macOS
+# .venv\Scripts\activate       # Windows PowerShell
+python -m pip install -r requirements.txt
+cp .env.example .env
+```
 
-2. **Criar e ativar o ambiente virtual:**
-   ```bash
-   # Linux/macOS
-   python3 -m venv .venv
-   source .venv/bin/activate
+No PowerShell, copie o modelo com `Copy-Item .env.example .env`.
+Nunca versione `.env`; ele está protegido pelo `.gitignore`.
 
-   # Windows
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
+## Variáveis de ambiente
 
-3. **Instalar as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+A aplicação carrega `.env` da raiz do projeto durante a inicialização local.
+Em hospedagem, configure as variáveis no painel da plataforma; o arquivo `.env`
+não é enviado ao repositório.
 
-4. **Configuração do Ambiente:**
-   O arquivo [`.env.example`](.env.example) contém o modelo das variáveis. Se ainda não tiver um `.env`, copie o modelo:
-   ```bash
-   cp .env.example .env
-   ```
-   No PowerShell, use `Copy-Item .env.example .env`. Se já existir um `.env`, mantenha os valores atuais e adicione apenas os campos ausentes do modelo.
-
-   Preencha `SUPABASE_URL` e `SUPABASE_SECRET_KEY` com os valores reais no `.env`. O nome legado `SUPABASE_KEY` também é aceito; `SUPABASE_SECRET_KEY` tem prioridade. Configuração parcial gera erro para evitar uso acidental do banco em memória. Para executar em memória, deixe essas duas variáveis vazias.
-
-   Sem configuração, a API utiliza armazenamento em memória para desenvolvimento. Para usar o Supabase, configure as variáveis abaixo. Prepare as tabelas conforme as instruções abaixo antes de usar o cadastro de clientes:
-   ```env
-   # Configuração do Supabase
-   SUPABASE_URL=seu_url_do_supabase_aqui
-   SUPABASE_SECRET_KEY=sua_chave_secreta_do_backend_aqui
-
-   # URL do frontend usada nos links de autocadastro
-   FRONTEND_URL=http://localhost:3000
-
-   # Configuração OAuth do Google Agenda
-   GOOGLE_CLIENT_ID=seu_google_client_id
-   GOOGLE_CLIENT_SECRET=seu_google_client_secret
-   ```
-
-   No PowerShell, antes de iniciar a API:
-   ```powershell
-   $env:SUPABASE_URL = "https://seu-projeto.supabase.co"
-   $env:SUPABASE_SECRET_KEY = "sua_chave_secreta_do_backend_aqui"
-   ```
-
-   Você também pode criar um arquivo `.env` na raiz do projeto com essas variáveis. A aplicação carrega esse arquivo automaticamente, independentemente do diretório de execução, sem sobrescrever variáveis já definidas no ambiente do processo. Mantenha o arquivo fora do controle de versão. A tabela de clientes usa RLS e acesso pelo backend com uma chave secreta (`sb_secret_...`) ou a chave legada `service_role`. A chave permanece no backend. Consulte a [documentação de chaves do Supabase](https://supabase.com/docs/guides/api/api-keys).
-
-### Executando a Aplicacao
-
-O backend disponibiliza `POST /registration-links` para gerar um convite,
-`GET /registration-links/{token}` para validá-lo e
-`POST /registration-links/{token}/register` para cadastrar a cliente.
-Configure `FRONTEND_URL` com a URL pública do frontend; o padrão de desenvolvimento
-é `http://localhost:3000`. O link gerado aponta para `/cadastro/{token}` nesse frontend.
-A página de cadastro ainda precisa ser implementada. Com as credenciais do
-Supabase configuradas, os convites são salvos em `public.registration_links` e
-o cadastro chama `POST /rest/v1/rpc/register_client_with_invitation`, criando a
-cliente e consumindo o convite na mesma transação. Prepare primeiro a tabela
-`public.clients` (migration 001) e execute a
-[migration 004](app/infrastructure/database/migrations/004_create_registration_links.sql)
-no SQL Editor do Supabase. Use uma chave secreta do backend ou a chave legada
-`service_role`, que possuem as permissões necessárias. Sem credenciais, os
-convites e as clientes ficam em memória e são perdidos ao reiniciar a API.
-No cadastro por convite, espaços nas extremidades dos campos são removidos.
-Nome deve ter entre 2 e 150 caracteres, telefone entre 8 e 30 e o e-mail deve
-ser válido. Campos extras são rejeitados. Dados inválidos retornam `422`,
-sem consumir o convite; links inválidos, expirados ou utilizados retornam `410`.
-Falhas de acesso ao cadastro de clientes retornam `503`.
-Cadastros e atualizações com e-mail ou telefone pertencente a outra cliente
-retornam `409`, com `detail` e `field` (`email` ou `phone`). E-mails são comparados
-sem diferenciar maiúsculas; telefones são comparados por dígitos, considerando
-números brasileiros com DDD equivalentes à versão com código `55`.
-O formato original dos contatos é preservado. Uma tentativa duplicada não
-consome o convite: os dados podem ser corrigidos e reenviados.
-
-Para ativar esse bloqueio no Supabase, execute a
-[migration 005](app/infrastructure/database/migrations/005_unique_client_contacts.sql)
-no SQL Editor após as migrations anteriores e reinicie a API atualizada.
-Os índices únicos bloqueiam duplicidades inclusive em gravações simultâneas e
-na função de cadastro por convite. Se já houver duplicidades, a migration aborta
-sem excluir ou mesclar registros. O final do arquivo contém consultas para
-localizá-las; revise os registros e resolva os conflitos antes de executar novamente.
-Sem a migration 005, o banco Supabase ainda permite contatos duplicados.
-As rotas de clientes, agendamentos, serviços, geração de convites e
-`GET /auth/google/connect` exigem autenticação administrativa.
-Configure no `.env` uma credencial exclusiva para o backend:
+### Backend e Supabase
 
 ```env
-ADMIN_API_TOKEN=cole_aqui_um_token_aleatorio_longo
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+ADMIN_API_TOKEN=gere_um_token_longo_e_aleatorio
+FRONTEND_URL=http://localhost:3000
 ```
 
-Gere o valor com `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-Envie `Authorization: Bearer SEU_TOKEN` nas chamadas administrativas.
-Em `/docs`, use **Authorize → AdminToken** e informe apenas o token.
-Sem configuração, essas rotas retornam `503`; credenciais ausentes ou incorretas
-retornam `401`. A validação do convite e o cadastro por token continuam públicos.
-O callback OAuth do Google continua público e verifica o estado e o cookie do fluxo.
-Para iniciar a conexão Google, um cliente administrativo deve enviar o cabeçalho
-a `/auth/google/connect` e preservar o cookie recebido durante o redirecionamento.
-Abrir diretamente essa URL na barra do navegador não envia o token administrativo.
+`SUPABASE_SECRET_KEY` é a chave usada pelo backend para a API REST do Supabase.
+O nome legado `SUPABASE_KEY` também é aceito, mas não deve ser usado em novas
+instalações. `SUPABASE_URL` e `SUPABASE_SECRET_KEY` precisam ser configuradas
+juntas; quando ambas estão vazias, a aplicação usa memória. Configuração parcial
+interrompe a inicialização para evitar um fallback acidental.
 
-Use HTTPS em produção. Essa credencial compartilhada é para integrações confiáveis:
-não a inclua no código do frontend público, na URL ou nos links de convite.
-O futuro painel web precisará de autenticação de usuários ou de um backend
-intermediário que mantenha essa credencial no servidor. Para revogá-la,
-altere `ADMIN_API_TOKEN` no ambiente e reinicie a API.
+Gere o token administrativo com:
 
-Inicie o servidor usando:
 ```bash
-python main.py
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
-A API estará disponível em `http://localhost:8000`.
-A documentação interativa do Swagger pode ser acessada em `http://localhost:8000/docs`.
 
-Para criar todas as tabelas em uma instalação inicial, execute o arquivo
+As variáveis `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_JWKS_URL`, `host`, `port`,
+`database` e `user` não são usadas pelo código atual para acessar o banco.
+
+### Google Calendar
+
+Use o modo simulado localmente quando não precisar do Google:
+
+```env
+CALENDAR_BACKEND=mock
+```
+
+Para a integração real:
+
+```env
+CALENDAR_BACKEND=google
+GOOGLE_CLIENT_ID=seu-client-id
+GOOGLE_CLIENT_SECRET=seu-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_TOKEN_ENCRYPTION_KEY=chave-Fernet-estavel
+GOOGLE_TOKEN_FILE=.secrets/google-token.enc
+```
+
+Gere `GOOGLE_TOKEN_ENCRYPTION_KEY` com:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Não altere essa chave depois de autorizar a agenda. O token OAuth é salvo
+criptografado em `GOOGLE_TOKEN_FILE`. Se o arquivo for perdido ou a chave mudar,
+é necessário autorizar novamente em `/auth/google/connect`.
+
+## Supabase
+
+Para uma instalação nova em desenvolvimento, execute
 [`app/infrastructure/database/init.sql`](app/infrastructure/database/init.sql)
-completo no **SQL Editor** do painel do Supabase. O script executa a criação das
-tabelas e a configuração de acesso em uma única transação.
+inteiro no SQL Editor do Supabase. Esse arquivo remove e recria as tabelas, por
+isso não deve ser executado em produção com dados existentes.
 
-**⚠️ IMPORTANTE: Atualização de Estrutura**
-Se você já possuía tabelas criadas anteriormente, as mudanças recentes de normalização (substituição de JSON por colunas e introdução de chaves estrangeiras) exigem que você **apague as tabelas existentes** antes de rodar o `init.sql`. No SQL Editor do Supabase, execute:
+Para um banco existente, execute as migrations em ordem:
+
+1. `001_create_clients.sql`
+2. `002_create_appointments.sql`
+3. `003_create_services.sql`
+4. `004_create_registration_links.sql`
+5. `005_unique_client_contacts.sql`
+
+As migrations antigas usam `CREATE TABLE IF NOT EXISTS`, que não adiciona colunas
+em tabelas já existentes. Confirme a estrutura de produção, principalmente após
+a normalização de serviços e agendamentos:
+
 ```sql
-drop table if exists public.appointments;
-drop table if exists public.clients;
+select table_name, column_name, data_type
+from information_schema.columns
+where table_schema = 'public'
+  and table_name in ('clients', 'services', 'appointments', 'registration_links')
+order by table_name, ordinal_position;
 ```
-Em seguida, execute o `init.sql`. Isso é necessário pois `IF NOT EXISTS` não altera a estrutura de tabelas já criadas.
 
-Como alternativa, execute os arquivos SQL de
-`app/infrastructure/database/migrations` no **SQL Editor** do painel do Supabase,
-em ordem de nome. Os scripts criam `clients` e `appointments` e configuram o
-acesso pelo backend. Usam `CREATE TABLE IF NOT EXISTS`, sem apagar dados existentes.
-A aplicação usa somente `SUPABASE_URL` e `SUPABASE_SECRET_KEY` para acessar a API REST e
-não executa migrações na inicialização.
+Em uma tabela `appointments` antiga, a coluna de status pode precisar ser criada:
 
-`IF NOT EXISTS` não atualiza colunas de tabelas já existentes; futuras alterações
-precisam de scripts próprios. O CRUD de agendamentos usa a tabela `appointments` pela API REST do Supabase.
-Falhas de persistência retornam HTTP `503`. O campo `end_time` é calculado pela
-aplicação e não é enviado como coluna ao banco.
+```sql
+alter table public.appointments
+add column if not exists active boolean not null default true;
 
-## Arquitetura
+grant select, insert, update, delete
+on public.appointments
+to service_role;
 
-- **Camada de API**: Endpoints FastAPI.
-- **Camada de Serviço**: Lógica de negócio, validações (sobreposição de horários e datas passadas).
-- **Camada de Infraestrutura**: Interfaces mockáveis para Banco de Dados (Supabase/Memória) e Agenda (Google).
+notify pgrst, 'reload schema';
+```
 
-## Documentação da API
+O backend usa a chave secreta do Supabase para acessar as tabelas protegidas por
+RLS. As migrations concedem as permissões ao papel `service_role`.
 
-Abaixo estão os endpoints disponíveis. Para testar, utilize o Swagger UI em `/docs`.
+## Executar a API
+
+Para executar a aplicação com o gate de testes:
+
+```bash
+python scripts/start.py
+```
+
+O comando executa toda a suíte antes de iniciar o Uvicorn. Se algum teste falhar,
+o processo termina e a API não é disponibilizada. Localmente, a API fica em
+`http://127.0.0.1:8000` e o Swagger em `http://127.0.0.1:8000/docs`.
+
+Para iniciar somente o servidor, sem o gate, use `python main.py` apenas para
+diagnóstico local. Em produção, não use esse caminho.
+
+No Render, configure `PYTHON_VERSION=3.13.5` ou outra versão 3.13 disponível
+na plataforma. Para Render ou outra plataforma que forneça a variável `PORT`, use:
+
+```bash
+python scripts/start.py
+```
+
+Configure também `SUPABASE_URL`, `SUPABASE_SECRET_KEY` e `ADMIN_API_TOKEN` no
+painel da hospedagem. Não dependa de um `.env` local no servidor.
+
+## Deploy no Render
+
+Variáveis mínimas para persistência e autenticação:
+
+```env
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+ADMIN_API_TOKEN=seu-token-administrativo
+CALENDAR_BACKEND=mock
+```
+
+Para Google Calendar em produção:
+
+```env
+CALENDAR_BACKEND=google
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://seu-servico.onrender.com/auth/google/callback
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_TOKEN_ENCRYPTION_KEY=chave-fixa
+GOOGLE_TOKEN_FILE=/var/data/google-token.enc
+```
+
+O `GOOGLE_REDIRECT_URI` precisa ser exatamente igual ao URI autorizado no Google
+Cloud, incluindo protocolo, domínio, caminho e ausência/presença de barra final.
+O arquivo de token precisa ficar em armazenamento persistente; caso contrário,
+um restart ou novo deploy pode exigir nova autorização.
+
+Após alterar variáveis, faça um novo deploy/restart. Autorize a agenda pelo mesmo
+domínio publicado, usando `/docs` com o token administrativo e executando
+`GET /auth/google/connect`. O callback OAuth é público, mas valida o estado e o
+cookie criado no início do fluxo.
+
+## Autenticação administrativa
+
+As rotas administrativas exigem:
+
+```http
+Authorization: Bearer SEU_ADMIN_API_TOKEN
+```
+
+No Swagger, clique em **Authorize → AdminToken** e informe somente o token, sem
+escrever `Bearer`.
+
+Rotas protegidas:
+
+- `/clientes/*`
+- `/agendamentos/*`
+- `/servicos/*`, exceto `/servicos/keepalive`
+- `POST /registration-links`
+- `GET /auth/google/connect`
+
+Sem `ADMIN_API_TOKEN`, as rotas retornam `503`. Sem header ou com token incorreto,
+retornam `401`. Nunca coloque o token na URL, em links de convite ou no frontend
+público.
+
+## Endpoints
 
 ### Clientes
 
 | Método | Rota | Descrição |
-| :--- | :--- | :--- |
-| `POST` | `/clientes/` | Cadastrar uma cliente |
-| `GET` | `/clientes/` | Listar as clientes cadastradas |
-| `GET` | `/clientes/{id}` | Consultar uma cliente pelo ID |
-| `PATCH` | `/clientes/{id}` | Atualizar parcialmente uma cliente |
-### Clientes
-...
-| `DELETE` | `/clientes/{id}` | Excluir uma cliente do cadastro |
+| --- | --- | --- |
+| `POST` | `/clientes/` | Cadastra uma cliente |
+| `GET` | `/clientes/` | Lista clientes |
+| `GET` | `/clientes/{id}` | Consulta uma cliente |
+| `PATCH` | `/clientes/{id}` | Atualiza parcialmente uma cliente |
+| `DELETE` | `/clientes/{id}` | Exclui uma cliente |
 
-**Regra de Negócio - Deleção de Cliente:** 
-Uma cliente **somente poderá ser excluída se não possuir agendamentos vinculados**. Caso existam agendamentos, a API retornará um erro informando que a cliente possui vínculos ativos. Para excluir a cliente, todos os seus agendamentos devem ser removidos primeiro.
-
-Os nomes dos campos seguem o padrão em inglês já usado pela API:
-...
-
-| Campo | Significado | Enviado no cadastro? |
-| :--- | :--- | :--- |
-| `id` | Identificador UUID da cliente | Gerado pelo servidor |
-| `name` | Nome da cliente | Obrigatório |
-| `email` | E-mail da cliente | Obrigatório |
-| `phone` | Número de telefone/WhatsApp | Obrigatório, como texto |
-| `created_at` | Data e hora do cadastro | Gerada pelo servidor, em UTC |
-
-Exemplo de corpo para `POST /clientes/`:
+Exemplo:
 
 ```json
 {
   "name": "Maria Silva",
-  "email": "maria@email.com",
+  "email": "maria@example.com",
   "phone": "+55 11 99999-9999"
 }
 ```
 
-Exemplo de resposta (`201 Created`):
+E-mail e telefone duplicados retornam `409`. Dados inválidos retornam `422`.
+Atualizações parciais preservam os campos omitidos. Dados são mantidos no Supabase
+quando ele está configurado; no modo memória, são perdidos ao reiniciar.
+
+### Serviços
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `POST` | `/servicos/` | Cria um serviço |
+| `GET` | `/servicos/` | Lista serviços; aceita `active_only=true` |
+| `GET` | `/servicos/{id}` | Consulta um serviço |
+| `PATCH` | `/servicos/{id}` | Atualiza nome, duração ou `active` |
+| `DELETE` | `/servicos/{id}` | Inativa o serviço (`active=false`) |
+| `GET` | `/servicos/keepalive` | Consulta a tabela de serviços e retorna a quantidade |
+
+Para ativar ou inativar manualmente:
 
 ```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "Maria Silva",
-  "email": "maria@email.com",
-  "phone": "+55 11 99999-9999",
-  "created_at": "2026-10-09T15:00:00Z"
-}
+{"active": false}
 ```
 
-Para alterar somente o número, envie `{"phone": "11988887777"}` ao `PATCH /clientes/{id}`. Os campos omitidos, o ID e a data de cadastro são preservados; um corpo vazio mantém os dados atuais. Nome e telefone não podem ser vazios ou conter apenas espaços, o e-mail deve ser válido e os campos enviados não podem ser nulos. Campos desconhecidos, incluindo `id` e `created_at` nos corpos de criação e atualização, são rejeitados.
+O keepalive é público, não exige token e consulta o Supabase. Uma resposta
+`503` indica falha de configuração ou acesso ao banco.
 
-Clientes inexistentes retornam `404`; dados inválidos e IDs que não são UUIDs retornam `422`. Falhas no acesso ao Supabase retornam `503`. Em memória, os dados são perdidos ao reiniciar a aplicação. No Supabase, o cadastro utiliza a [API REST de dados](https://supabase.com/docs/guides/api).
+### Agendamentos
 
-Os agendamentos continuam recebendo os dados de contato no campo `client`. O cadastro e a exclusão de clientes não criam, alteram ou excluem agendamentos automaticamente.
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `POST` | `/agendamentos/` | Cria um agendamento |
+| `GET` | `/agendamentos/` | Lista agendamentos |
+| `GET` | `/agendamentos/{id}` | Consulta um agendamento |
+| `PATCH` | `/agendamentos/{id}` | Atualiza um agendamento |
+| `DELETE` | `/agendamentos/{id}` | Cancela logicamente um agendamento |
+| `POST` | `/agendamentos/{id}/sincronizar` | Sincroniza o status no Google |
 
-### 📅 Agendamentos
+Corpo de criação/atualização:
 
-**Regra de Integridade:** 
-Agendamentos dependem obrigatoriamente de uma cliente existente. Não é permitido criar ou alterar um agendamento para um `client_id` que não esteja cadastrado no sistema.
-
-| Método | Rota | Descrição | Parâmetros Principais |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/agendamentos` | Registrar um novo agendamento | `client_id` (UUID), `service`, `start_time`, `duration_minutes` |
-| `GET` | `/agendamentos` | Listar todos os agendamentos | `start_date`, `end_date` (Opcionais) |
-| `GET` | `/agendamentos/{id}` | Obter detalhes de um agendamento | `id` (Path) |
-| `PATCH` | `/agendamentos/{id}` | Atualizar um agendamento existente | `id` (Path), Corpo do agendamento |
-| `DELETE` | `/agendamentos/{id}` | Cancelar um agendamento | `id` (Path) |
-| `POST` | `/agendamentos/{id}/sincronizar` | Forçar sincronizar com o Google Agenda | `id` (Path) |
-
-**Exemplo de corpo para `POST /agendamentos`:**
 ```json
 {
   "client_id": "550e8400-e29b-41d4-a716-446655440000",
-  "service": "Alongamento em Gel",
+  "service_id": "650e8400-e29b-41d4-a716-446655440000",
   "start_time": "2026-11-10T14:00:00",
-  "duration_minutes": 120,
-  "sync_state": {
-    "google_event_id": "ev_123456789",
-    "status": "Pending",
-    "last_synced": "2026-11-10T15:00:00Z"
-  }
+  "duration_minutes": 120
 }
 ```
 
-**Validações Importantes:**
-- `start_time`: Deve ser uma data futura. Agendamentos no passado são rejeitados (`400 Bad Request`).
-- `client_id`: Deve ser um UUID válido de uma cliente já cadastrada no sistema.
+`client_id` e `service_id` precisam existir. Se `duration_minutes` for omitido,
+a duração do serviço será usada. Serviços inativos não podem ser usados em novos
+agendamentos. Datas passadas e horários sobrepostos retornam `400`.
 
-Datas com fuso horário são convertidas para UTC. Datas sem fuso, inclusive nos
-filtros, são interpretadas no horário de `America/Sao_Paulo`.
+O `DELETE` é soft delete: não remove a linha e grava `active=false`. Quando o
+agendamento possui evento Google, o evento é excluído antes da atualização do
+Supabase. Se o Google não estiver autorizado ou falhar, a API retorna `503` e o
+agendamento pode permanecer ativo; nesse caso, corrija o OAuth e tente novamente.
 
-**Observação:** O campo `id` do agendamento é gerado automaticamente pelo sistema e não deve ser enviado na requisição de criação (`POST`).
+Para filtrar apenas ativos:
+
+```text
+GET /agendamentos/?active_only=true
+```
+
+Datas sem fuso são interpretadas como horário de `America/Sao_Paulo` e convertidas
+para UTC. `end_time` é calculado pela aplicação e não é uma coluna do banco.
+
+### Cadastro por convite
+
+| Método | Rota | Autenticação | Descrição |
+| --- | --- | --- | --- |
+| `POST` | `/registration-links` | Admin | Gera convite |
+| `GET` | `/registration-links/{token}` | Pública | Valida convite |
+| `POST` | `/registration-links/{token}/register` | Pública | Cadastra cliente |
+
+Convites expiram em seis horas, são de uso único e armazenam somente o hash do
+token. Links inválidos, expirados ou usados retornam `410`.
+
+### Google Calendar
+
+| Método | Rota | Autenticação | Descrição |
+| --- | --- | --- | --- |
+| `GET` | `/auth/google/connect` | Admin | Inicia OAuth |
+| `GET` | `/auth/google/callback` | Pública | Finaliza OAuth |
+
+O callback não deve ser aberto isoladamente. O fluxo deve começar em
+`/auth/google/connect` para que o estado e o cookie sejam criados.
+
+## Keepalive
+
+Para manter o serviço ativo e verificar o acesso ao Supabase, configure um cron
+para chamar:
+
+```text
+https://seu-servico.onrender.com/servicos/keepalive
+```
+
+Use método `GET` e não envie `Authorization`. A rota consulta `services` e retorna
+`{"status":"ok","services":N}`. Não use `/agendamentos/` como keepalive, pois
+essa rota é protegida e exige token administrativo.
+
+## Logs e diagnóstico
+
+Os logs usam o logger `nailflows` e são enviados para stdout, portanto aparecem
+nos logs do Render. O cancelamento de agendamentos registra fases específicas:
+
+- `phase=database_read`
+- `phase=google_delete`
+- `phase=database_update`
+- `phase=completed`
+
+Falhas OAuth registram `phase=credentials_load`, tipo da exceção e caminho do
+arquivo de token, sem registrar tokens ou segredos. A mensagem HTTP de falha do
+Google é separada de falhas do Supabase.
 
 ## Testes
 
-Instale as dependências de desenvolvimento e execute:
-
 ```bash
-python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-Os testes verificam o CRUD de clientes, atualizações parciais, validações, campos gerados pelo servidor e compatibilidade com os agendamentos. As chamadas ao Supabase são simuladas nos testes, sem necessidade de credenciais ou acesso a um banco real.
+O comando `python scripts/start.py` executa exatamente essa suíte antes de cada
+inicialização. Durante os testes, `PYTHON_DOTENV_DISABLED=1` impede que o `.env`
+local ou as credenciais de produção sejam carregados. Os testes usam memória e
+chamadas HTTP simuladas; não devem acessar Supabase ou Google reais.
 
-Para executar somente os testes de convites:
+Para executar uma família específica:
 
 ```bash
 python -m unittest discover -s tests -p 'test_registration*.py' -v
 ```
 
-A cobertura inclui geração de links distintos, hash armazenado, validade de seis
-horas, limite exato da expiração, reutilização, validação de formulário, falhas
-ao salvar o convite ou a cliente e nova tentativa após falha. A concorrência é
-verificada entre serviços e por HTTP: somente uma tentativa cadastra a cliente.
-Esses testes usam o repositório em memória dentro de um único processo.
-Um teste com subprocesso confirma que os convites em memória não sobrevivem ao
-encerramento do processo. Isso documenta uma limitação, sem atestar persistência.
-Os testes REST e RPC usam respostas simuladas e verificam os parâmetros, a
-autenticação, a seleção do backend e os erros retornados pelo Supabase.
-A persistência e a concorrência no PostgreSQL real ainda precisam ser verificadas
-em um banco de testes com as migrations aplicadas.
+## Segurança
 
-Para verificar a persistência manualmente nesse banco: gere um convite com
-`POST /registration-links` usando o token administrativo, guarde a URL e reinicie
-a API mantendo as credenciais do mesmo projeto Supabase. A consulta
-`GET /registration-links/{token}` deve continuar retornando `200`. Envie nome,
-e-mail e telefone a `POST /registration-links/{token}/register`; a primeira
-tentativa deve retornar `201` e a reutilização deve retornar `410`, inclusive
-após outro reinício. Esse procedimento cria uma cliente no banco escolhido.
-Se a requisição RPC sofrer timeout, consulte o estado do convite antes de tentar
-novamente: a transação pode ter sido concluída mesmo sem a resposta chegar à API.
+- Não versione `.env`, tokens Google ou arquivos em `.secrets`.
+- Use HTTPS em produção.
+- Mantenha `ADMIN_API_TOKEN` somente no backend ou em um serviço confiável de cron.
+- Não registre headers `Authorization` nem códigos OAuth.
+- Troque imediatamente qualquer token que tenha sido exposto em logs, terminal ou chat.
+- Use uma única instância/worker quando o fluxo OAuth e o arquivo de token estiverem
+  armazenados localmente.
 
-## Aviso de Segurança
-Credenciais sensíveis (`.env`) são gerenciadas via `.gitignore`. Nunca envie suas chaves para o repositório.
+## Estrutura
 
-
-## Conectar o Google Calendar
-
-Esta versão conecta **uma conta/agenda por instalação**, com um único processo
-Uvicorn. A conexão abre diretamente a autorização no Google, sem usuário/senha local.
-Para múltiplas profissionais/contas serão necessários autenticação de usuários e
-armazenamento de tokens por conta. As rotas de agendamentos ainda não exigem login;
-use localmente até configurar autenticação e controle de acesso para publicação.
-
-1. No Google Cloud, habilite Calendar API e configure o consentimento com seu e-mail
-   como usuário de teste. Crie um cliente OAuth do tipo **Aplicativo da Web** e cadastre
-   exatamente `http://localhost:8000/auth/google/callback` como URI de redirecionamento.
-   Autorize o escopo `https://www.googleapis.com/auth/calendar.events`.
-2. Instale `pip install -r requirements.txt` com o ambiente virtual ativo.
-3. Gere a chave de criptografia e copie para `GOOGLE_TOKEN_ENCRYPTION_KEY` no `.env`
-   (não compartilhe o resultado):
-   ```bash
-   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-   ```
-4. Complete seu `.env`, preservando as configurações do Supabase:
-   ```env
-   CALENDAR_BACKEND=google
-   GOOGLE_CLIENT_ID=seu_id_oauth
-   GOOGLE_CLIENT_SECRET=seu_segredo_oauth
-   GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
-   GOOGLE_CALENDAR_ID=primary
-   GOOGLE_TOKEN_ENCRYPTION_KEY=chave_de_criptografia_gerada
-   GOOGLE_TOKEN_FILE=.secrets/google-token.enc
-   ```
-5. Inicie `python main.py`. Abra `http://localhost:8000/auth/google/connect` no navegador.
-   Você será direcionado ao Google. Escolha a conta da agenda e permita acesso aos eventos. Mantenha o mesmo navegador
-   e host (`localhost`) até concluir; o fluxo expira em dez minutos.
-6. Após a mensagem de sucesso, use `/docs` para criar um agendamento futuro com e-mail
-   de teste. Confira o evento na agenda, altere-o e depois exclua-o pela API.
-   **Criação, alteração e exclusão enviam notificações Google à convidada.**
-   A rota `/agendamentos/{id}/sincronizar` consulta a resposta ao convite (aceito,
-   recusado, talvez ou pendente); ela também tenta reenviar alterações pendentes e
-   criar o evento quando o agendamento ainda está sem ID do Google.
-
-Os tokens são criptografados com Fernet, gravados atomicamente em arquivo com acesso
-restrito ao usuário do processo e ignorados pelo Git. Guarde a chave de criptografia:
-perdê-la exige autorizar novamente. O acesso é renovado automaticamente; revogação
-ou expiração do refresh token exige repetir `/auth/google/connect`. Em modo de teste
-externo, o Google pode expirar o refresh token em sete dias.
-
-O banco e o Google não compartilham uma transação: uma falha Google retorna 503,
-mas a criação/alteração pode já estar salva no banco. Consulte os agendamentos e use
-`/sincronizar` com o ID existente para recuperar, evitando cadastrar novamente.
-A verificação de sobreposição considera os agendamentos do NailsFlow, não eventos
-criados diretamente no Google. Para servidor publicado, configure HTTPS, mantenha
-um único worker nesta versão e não registre query strings do callback no proxy
-(elas contêm o código OAuth). `python main.py` desativa o access log do Uvicorn.
-
-`GOOGLE_ADMIN_KEY` não é mais utilizada e pode ser removida do `.env`. A rota de
-conexão está acessível a quem alcança o servidor; em uma instalação pública, proteja
-esse acesso antes de permitir a troca da conta Google conectada.
+- `app/api`: rotas FastAPI e autenticação.
+- `app/domain`: modelos e regras de domínio.
+- `app/services`: regras de negócio.
+- `app/infrastructure/database`: memória, Supabase e SQL.
+- `app/infrastructure/calendar`: Google Calendar real ou mock.
+- `tests`: testes unitários e de integração simulada.

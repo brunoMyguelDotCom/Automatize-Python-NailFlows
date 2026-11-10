@@ -13,6 +13,7 @@ from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 
+from app.core.logging_config import logger
 from app.domain.models import SyncStatus
 from app.infrastructure.calendar.base import BaseCalendar
 
@@ -97,7 +98,19 @@ class GoogleCalendar(BaseCalendar):
                     credentials.refresh(Request())
                     self._save(credentials)
                 return credentials
+        except FileNotFoundError as exc:
+            logger.error(
+                "Credenciais Google ausentes phase=credentials_load token_path=%s",
+                self.token_path,
+            )
+            raise CalendarError("Conecte ou autorize novamente a agenda em /auth/google/connect.") from exc
         except Exception as exc:
+            logger.exception(
+                "Falha ao carregar ou renovar credenciais Google "
+                "phase=credentials_load token_path=%s error_type=%s",
+                self.token_path,
+                type(exc).__name__,
+            )
             raise CalendarError("Conecte ou autorize novamente a agenda em /auth/google/connect.") from exc
 
     def _request(self, method, event_id=None, **kwargs):
@@ -107,6 +120,14 @@ class GoogleCalendar(BaseCalendar):
         try:
             with AuthorizedSession(self._credentials()) as session:
                 response = session.request(method, url, timeout=20, **kwargs)
+            if not response.ok:
+                logger.error(
+                    "Google Calendar respondeu com erro phase=google_request "
+                    "method=%s status=%s event_id=%s",
+                    method,
+                    response.status_code,
+                    event_id or "none",
+                )
             if method == "POST" and response.status_code == 409:
                 existing = self._request("GET", kwargs["json"]["id"])
                 if existing.get("extendedProperties", {}).get("private", {}).get("nailsflow_id") == kwargs["json"]["extendedProperties"]["private"]["nailsflow_id"]:
@@ -118,6 +139,13 @@ class GoogleCalendar(BaseCalendar):
         except CalendarError:
             raise
         except Exception as exc:
+            logger.exception(
+                "Falha na requisição ao Google Calendar phase=google_request "
+                "method=%s event_id=%s error_type=%s",
+                method,
+                event_id or "none",
+                type(exc).__name__,
+            )
             raise CalendarError("Falha ao acessar o Google Calendar. Tente novamente.") from exc
 
     @staticmethod
