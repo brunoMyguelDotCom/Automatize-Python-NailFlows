@@ -26,19 +26,16 @@ class SupabaseRestDatabase:
 
     def _request(self, method: str, params=None, data=None):
         url = self.url
+        params = dict(params or {})
+        # Include relations in write representations too: Calendar needs the
+        # client's email immediately after INSERT/PATCH, before another GET.
+        if self.record_model is Appointment and method in {"GET", "POST", "PATCH"}:
+            select = params.get("select", "*")
+            for relation in ("clients(*)", "services(*)"):
+                if relation not in select:
+                    select += f",{relation}"
+            params["select"] = select
         if params:
-            # Use Resource Embedding for Appointment retrievals to fetch nested client and service data
-            if self.record_model is Appointment and method == "GET":
-                params = params or {}
-                select_val = params.get("select", "*")
-                # Ensure we select all appointment columns and the related client and service objects
-                if "clients(*)" not in select_val or "services(*)" not in select_val:
-                    if select_val == "*":
-                        select_val = "*,clients(*),services(*)"
-                    else:
-                        select_val = f"{select_val},clients(*),services(*)"
-                params["select"] = select_val
-
             url = f"{url}?{urlencode(params)}"
         headers = {
             "apikey": self.key,
