@@ -106,6 +106,7 @@ def sync_appointment(id: str, service: AppointmentServiceDep):
 
 # --- Serviços ---
 service_router = APIRouter(prefix="/servicos", tags=["serviços"])
+service_keepalive_router = APIRouter(prefix="/servicos", tags=["serviços"])
 
 
 def get_service_service() -> ServiceService:
@@ -113,6 +114,17 @@ def get_service_service() -> ServiceService:
 
 
 ServiceServiceDep = Annotated[ServiceService, Depends(get_service_service)]
+
+
+@service_keepalive_router.get(
+    "/keepalive",
+    summary="Verificar disponibilidade da API",
+)
+def service_keepalive(service: ServiceServiceDep):
+    if service is None:
+        raise HTTPException(status_code=503, detail="Banco de dados não configurado")
+    services = service.list_services(active_only=False)
+    return {"status": "ok", "services": len(services)}
 
 
 @service_router.post(

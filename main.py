@@ -6,7 +6,12 @@ from fastapi.responses import JSONResponse
 
 from app.api.client_endpoints import get_client_service
 from app.api.client_endpoints import router as client_router
-from app.api.endpoints import get_appointment_service, get_service_service, router
+from app.api.endpoints import (
+    get_appointment_service,
+    get_service_service,
+    router,
+    service_keepalive_router,
+)
 from app.api.registration_endpoints import get_registration_service
 from app.api.registration_endpoints import router as registration_router
 from app.api.security import require_admin
@@ -118,6 +123,7 @@ app.dependency_overrides[get_client_service] = lambda: client_service
 app.dependency_overrides[get_service_service] = lambda: service_service
 app.dependency_overrides[get_registration_service] = lambda: registration_service
 
+app.include_router(service_keepalive_router)
 app.include_router(router, dependencies=[Depends(require_admin)])
 app.include_router(client_router, dependencies=[Depends(require_admin)])
 app.include_router(registration_router)

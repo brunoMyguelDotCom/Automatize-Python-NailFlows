@@ -1,9 +1,10 @@
 from contextlib import closing
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
+from app.api.endpoints import get_service_service
 from main import app
 
 
@@ -11,6 +12,8 @@ class AdminSecurityTests(TestCase):
     def test_all_administrative_operations_reject_missing_and_invalid_tokens(self):
         with patch.dict("os.environ", {"ADMIN_API_TOKEN": "test-admin"}), closing(TestClient(app)) as api:
             for path, operations in app.openapi()["paths"].items():
+                if path == "/servicos/keepalive":
+                    continue
                 if not path.startswith(("/clientes", "/agendamentos", "/servicos")) and path != "/registration-links":
                     continue
                 for method in operations:
@@ -39,3 +42,20 @@ class AdminSecurityTests(TestCase):
                 self.assertEqual(api.get("/clientes/", headers={
                     "Authorization": "Bearer test-admin"
                 }).status_code, 200)
+
+    def test_service_keepalive_is_public(self):
+        with patch.dict("os.environ", {"ADMIN_API_TOKEN": "test-admin"}), closing(TestClient(app)) as api:
+            service = Mock()
+            service.list_services.return_value = []
+            original = app.dependency_overrides.get(get_service_service)
+            app.dependency_overrides[get_service_service] = lambda: service
+            try:
+                response = api.get("/servicos/keepalive")
+            finally:
+                if original is None:
+                    app.dependency_overrides.pop(get_service_service, None)
+                else:
+                    app.dependency_overrides[get_service_service] = original
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"status": "ok", "services": 0})
+            service.list_services.assert_called_once_with(active_only=False)
