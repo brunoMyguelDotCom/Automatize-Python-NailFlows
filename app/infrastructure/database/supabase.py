@@ -7,8 +7,9 @@ from urllib.request import Request, urlopen
 from pydantic import ValidationError
 
 from app.core.logging_config import logger
-from app.domain.models import Appointment, ClientRecord, Service
+from app.domain.models import Appointment, ClientRecord, Service, DuplicateClientError
 from app.infrastructure.database.base import (
+    duplicate_client_error,
     AppointmentDatabaseError,
     BaseClientDatabase,
     BaseDatabase,
@@ -76,6 +77,12 @@ class SupabaseRestDatabase:
         except HTTPError as exc:
             try:
                 error_body = exc.read().decode("utf-8")
+                try:
+                    duplicate = duplicate_client_error(json.loads(error_body))
+                except ValueError:
+                    duplicate = None
+                if duplicate is not None:
+                    raise duplicate
                 logger.error("Supabase HTTP Error %s: %s", exc.code, error_body)
 
                 if (
@@ -86,12 +93,13 @@ class SupabaseRestDatabase:
                     raise ForeignKeyViolationError(
                         "Violação de chave estrangeira detectada no banco de dados"
                     ) from exc
-            except ForeignKeyViolationError:
+            except (ForeignKeyViolationError, DuplicateClientError):
                 raise
             except Exception as read_exc:
                 logger.error("Could not read Supabase error body: %s", str(read_exc))
 
-            exc.close()
+            finally:
+                exc.close()
             # Use the record_model's specific database_error to avoid generic errors
             raise self.database_error("Falha ao acessar o banco de dados") from exc
         except (URLError, OSError, ValueError, ValidationError) as exc:

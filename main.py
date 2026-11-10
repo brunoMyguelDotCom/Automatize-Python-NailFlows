@@ -1,22 +1,32 @@
 import re
 import os
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.client_endpoints import get_client_service
 from app.api.client_endpoints import router as client_router
 from app.api.endpoints import get_appointment_service, get_service_service, router
+from app.api.registration_endpoints import get_registration_service
+from app.api.registration_endpoints import router as registration_router
+from app.api.security import require_admin
+from app.domain.models import DuplicateClientError
 from app.infrastructure.calendar.google_mock import GoogleMockCalendar
 from app.infrastructure.database.base import (
     AppointmentDatabaseError,
     ClientDatabaseError,
+    RegistrationDatabaseError,
     ServiceDatabaseError,
 )
 from app.infrastructure.database.config import load_supabase_config
 from app.infrastructure.database.memory import InMemoryClientDatabase, InMemoryDatabase
+from app.infrastructure.database.registration_repository import (
+    InMemoryRegistrationRepository,
+    SupabaseRegistrationRepository,
+)
 from app.services.appointment_service import AppointmentService
 from app.services.client_service import ClientService
+from app.services.registration_service import RegistrationService
 from app.services.service_service import ServiceService
 
 
@@ -67,11 +77,13 @@ if supabase_url and supabase_key:
     db = SupabaseDatabase(supabase_url, supabase_key)
     client_db = SupabaseClientDatabase(supabase_url, supabase_key)
     service_db = SupabaseServiceDatabase(supabase_url, supabase_key)
+    registration_repository = SupabaseRegistrationRepository(supabase_url, supabase_key)
 else:
     logger.warning("Supabase não configurado. Usando banco de dados em memória.")
     db = InMemoryDatabase()
     client_db = InMemoryClientDatabase()
     service_db = None
+    registration_repository = InMemoryRegistrationRepository()
 
 # As bibliotecas Google só são importadas quando a integração é habilitada.
 backend = os.getenv("CALENDAR_BACKEND", "mock").strip().lower()
@@ -94,14 +106,26 @@ else:
 appointment_service = AppointmentService(db, calendar, service_db)
 client_service = ClientService(client_db)
 service_service = ServiceService(service_db) if service_db else None
+registration_service = RegistrationService(
+    registration_repository,
+    client_service,
+    frontend_url=os.getenv("FRONTEND_URL", "http://localhost:3000").strip(),
+)
 
 # Inject the service into FastAPI dependencies
 app.dependency_overrides[get_appointment_service] = lambda: appointment_service
 app.dependency_overrides[get_client_service] = lambda: client_service
 app.dependency_overrides[get_service_service] = lambda: service_service
+app.dependency_overrides[get_registration_service] = lambda: registration_service
 
-app.include_router(router)
-app.include_router(client_router)
+app.include_router(router, dependencies=[Depends(require_admin)])
+app.include_router(client_router, dependencies=[Depends(require_admin)])
+app.include_router(registration_router)
+
+
+@app.exception_handler(DuplicateClientError)
+def handle_duplicate_client(request: Request, exc: DuplicateClientError):
+    return JSONResponse(status_code=409, content={"detail": str(exc), "field": exc.field})
 
 
 @app.exception_handler(ClientDatabaseError)
@@ -111,6 +135,14 @@ def handle_client_database_error(request: Request, exc: ClientDatabaseError):
         content={
             "detail": "Não foi possível acessar o cadastro de clientes. Tente novamente."
         },
+    )
+
+
+@app.exception_handler(RegistrationDatabaseError)
+def handle_registration_database_error(request: Request, exc: RegistrationDatabaseError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Não foi possível acessar os convites. Tente novamente."},
     )
 
 

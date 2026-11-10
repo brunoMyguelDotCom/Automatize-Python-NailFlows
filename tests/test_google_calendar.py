@@ -65,15 +65,16 @@ class GoogleCalendarTests(TestCase):
                 self.google.finish(state, "code", "attacker")
             flow.assert_not_called()
 
-    def test_routes_connect_without_login_and_do_not_expose_tokens(self):
+    def test_routes_require_admin_and_do_not_expose_tokens(self):
         app = FastAPI()
         app.state.google_calendar = self.google
         app.include_router(router)
-        with TestClient(app) as client:
-            response = client.get("/auth/google/connect", follow_redirects=False)
+        with patch.dict("os.environ", {"ADMIN_API_TOKEN": "test-admin"}), TestClient(app) as client:
+            self.assertEqual(client.get("/auth/google/connect").status_code, 401)
+            response = client.get("/auth/google/connect", headers={"Authorization": "Bearer test-admin"}, follow_redirects=False)
             self.assertEqual(response.status_code, 302)
             self.assertNotIn("www-authenticate", response.headers)
-            self.assertFalse(app.openapi().get("components", {}).get("securitySchemes"))
+            self.assertIn("AdminToken", app.openapi()["components"]["securitySchemes"])
             self.assertIn("HttpOnly", response.headers["set-cookie"])
             state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
             with patch.object(self.google, "_flow") as flow:

@@ -20,6 +20,7 @@ ClientServiceDep = Annotated[ClientService, Depends(get_client_service)]
     "/",
     response_model=ClientRecord,
     status_code=201,
+    responses={409: {"description": "E-mail ou telefone já cadastrado"}},
     summary="Cadastrar cliente",
     description="Cadastra uma cliente. O ID e a data de cadastro são gerados pelo servidor.",
 )
@@ -50,6 +51,7 @@ def get_client(id: UUID, service: ClientServiceDep):
 @router.patch(
     "/{id}",
     response_model=ClientRecord,
+    responses={409: {"description": "E-mail ou telefone já cadastrado"}},
     summary="Atualizar cliente",
     description="Atualiza somente os campos enviados. O ID e a data de cadastro são preservados.",
 )
@@ -64,4 +66,3 @@ def delete_client(id: UUID, service: ClientServiceDep):
     if not service.delete_client(str(id)):
         raise HTTPException(status_code=404, detail="Cliente não encontrada")
     return {"detail": "Cliente excluída com sucesso"}
- 

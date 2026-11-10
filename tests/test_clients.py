@@ -17,6 +17,9 @@ from main import app
 
 class ClientEndpointTests(TestCase):
     def setUp(self):
+        auth_env = patch.dict("os.environ", {"ADMIN_API_TOKEN": "test-admin"})
+        auth_env.start()
+        self.addCleanup(auth_env.stop)
         self.original_overrides = app.dependency_overrides.copy()
         self.db = InMemoryClientDatabase()
         self.service = ClientService(self.db)
@@ -24,7 +27,7 @@ class ClientEndpointTests(TestCase):
         app.dependency_overrides[get_appointment_service] = lambda: AppointmentService(
             InMemoryDatabase(), GoogleMockCalendar()
         )
-        self.api = TestClient(app)
+        self.api = TestClient(app, headers={"Authorization": "Bearer test-admin"})
         self.addCleanup(self.api.close)
         self.addCleanup(self.restore_overrides)
         self.client_data = {
@@ -118,6 +121,7 @@ class ClientEndpointTests(TestCase):
         self.assertEqual(
             {key: first[key] for key in self.client_data}, self.client_data
         )
+        self.client_data = {**self.client_data, "email": "segunda@example.com", "phone": "21988887777"}
         second = self.create_client()
         self.assertNotEqual(first["id"], second["id"])
         self.assertEqual(len(self.api.get("/clientes/").json()), 2)

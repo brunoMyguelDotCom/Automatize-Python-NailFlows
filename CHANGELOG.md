@@ -2,6 +2,24 @@
 
 Todas as alterações relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.3.0] - 2026-11-09
+
+### Added
+- Backend de autocadastro de clientes por convite, com geração em `POST /registration-links`, validação em `GET /registration-links/{token}` e cadastro em `POST /registration-links/{token}/register`.
+- Convites de uso único com validade de seis horas e armazenamento apenas do hash do token. Links inválidos, expirados ou utilizados retornam `410`.
+- Persistência de convites no Supabase e função RPC para criar a cliente e consumir o convite na mesma transação, por meio da migration `004_create_registration_links.sql`. Sem credenciais, o fluxo utiliza memória e perde os dados ao reiniciar.
+- Validação do formulário de autocadastro, com remoção de espaços nas extremidades, limites de nome e telefone, validação de e-mail e rejeição de campos extras. Dados inválidos ou contatos duplicados não consomem o convite.
+- Autenticação administrativa por `ADMIN_API_TOKEN`, enviada como Bearer token, com suporte ao esquema `AdminToken` no Swagger.
+- Migration `005_unique_client_contacts.sql` com índices únicos para impedir contatos duplicados, inclusive em gravações simultâneas. A migration aborta caso existam duplicidades, sem excluir ou mesclar registros.
+- Testes de ciclo de vida dos convites, validação, concorrência em memória, integração HTTP, chamadas simuladas ao Supabase, autenticação administrativa e contatos duplicados.
+- Documentação das variáveis `FRONTEND_URL` e `ADMIN_API_TOKEN`, aplicação das migrations e verificação manual da persistência no Supabase. A página de cadastro no frontend ainda precisa ser implementada.
+
+### Changed
+- Rotas de clientes, agendamentos, serviços, geração de convites e conexão com Google passam a exigir autenticação administrativa. Credenciais ausentes ou incorretas retornam `401`; ausência de configuração retorna `503`.
+- Validação e cadastro por convite permanecem públicos, assim como o callback OAuth do Google, que mantém a validação de estado e cookie.
+- Cadastro e atualização de clientes passam a retornar `409` para e-mail ou telefone já cadastrado, identificando o campo em conflito. A comparação ignora maiúsculas no e-mail e normaliza os dígitos do telefone, considerando a equivalência de números brasileiros com DDD e código `55`, preservando o formato original armazenado.
+- Falhas de acesso ao armazenamento de convites retornam `503`.
+
 ## [1.2.0] - 2026-11-05
 
 ### Added
@@ -94,4 +112,6 @@ O código implementa atualmente o núcleo lógico de um sistema de agendamentos.
 2. **Gestão de Agendamentos**: Criação, leitura, atualização, e exclusão (lógica) de horários, com validações automáticas para impedir agendamentos em datas passadas, sobreposição de horários e uso de serviços inativos.
 3. **Integração com Google Agenda**: Calendário simulado ou integração real via OAuth para uma conta por instalação, com criação, atualização e exclusão de eventos.
 4. **Rastreamento de Status**: Consulta manual da resposta ao convite (confirmado, recusado, talvez ou pendente), com atualização do estado e da data de sincronização no banco interno.
-5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM. Com credenciais, a gestão de clientes, serviços e agendamentos utiliza a API REST do Supabase.
+5. **Persistência Flexível**: Sem credenciais do Supabase, o sistema utiliza memória RAM para clientes, agendamentos e convites. Com credenciais e migrations aplicadas, clientes, serviços, agendamentos e convites são persistidos no Supabase, com cadastro por convite realizado em uma transação via RPC.
+6. **Autocadastro por Convite**: Geração de links de uso único com expiração em seis horas, validação pública e cadastro de clientes com bloqueio de contatos duplicados. A página de cadastro no frontend ainda está pendente.
+7. **Proteção Administrativa**: Autenticação por Bearer token nas rotas administrativas e no início da conexão com Google Agenda.
