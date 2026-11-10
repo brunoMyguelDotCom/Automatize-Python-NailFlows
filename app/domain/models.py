@@ -1,4 +1,5 @@
 import uuid
+import re
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -10,6 +11,25 @@ from pydantic import (
     computed_field,
     field_validator,
 )
+
+
+def client_email_key(email: str) -> str:
+    return email.strip().lower()
+
+
+def client_phone_key(phone: str) -> str:
+    digits = re.sub(r"[^0-9]", "", phone)
+    # Números brasileiros com DDD são equivalentes à versão com +55.
+    return "55" + digits if len(digits) in (10, 11) else digits
+
+
+class DuplicateClientError(ValueError):
+    """E-mail ou telefone já associado a outra cliente."""
+
+    def __init__(self, field: str):
+        self.field = field
+        label = "E-mail" if field == "email" else "Telefone"
+        super().__init__(f"{label} já cadastrado")
 
 
 class SyncStatus(str, Enum):
@@ -199,3 +219,21 @@ class Appointment(AppointmentBase):
     @property
     def end_time(self) -> datetime:
         return self.start_time + timedelta(minutes=self.duration_minutes)
+
+class RegistrationLinkError(ValueError):
+    """Convite inválido, expirado ou já utilizado."""
+
+
+class ClientRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=2, max_length=150)
+    email: EmailStr
+    phone: str = Field(min_length=8, max_length=30)
+
+class RegistrationLinkResponse(BaseModel):
+    url: str
+    expires_at: str
+
+class RegistrationStatusResponse(BaseModel):
+    valid: bool

@@ -1,4 +1,7 @@
-from app.domain.models import Appointment, ClientRecord
+from threading import RLock
+from app.domain.models import (
+    Appointment, ClientRecord, DuplicateClientError, client_email_key, client_phone_key,
+)
 from app.infrastructure.database.base import BaseClientDatabase, BaseDatabase
 
 
@@ -34,24 +37,40 @@ class InMemoryDatabase(BaseDatabase):
 class InMemoryClientDatabase(BaseClientDatabase):
     def __init__(self):
         self._storage: dict[str, ClientRecord] = {}
+        self._lock = RLock()
+
+    def _check_duplicates(self, client, exclude_id=None):
+        for existing in self._storage.values():
+            if existing.id == exclude_id:
+                continue
+            if client_email_key(existing.email) == client_email_key(client.email):
+                raise DuplicateClientError("email")
+            if client_phone_key(existing.phone) == client_phone_key(client.phone):
+                raise DuplicateClientError("phone")
 
     def create(self, client: ClientRecord) -> ClientRecord:
-        self._storage[client.id] = client
-        return client
+        with self._lock:
+            self._check_duplicates(client)
+            self._storage[client.id] = client
+            return client
 
     def get_by_id(self, client_id: str) -> ClientRecord | None:
         return self._storage.get(client_id)
 
     def list_all(self) -> list[ClientRecord]:
-        return list(self._storage.values())
+        with self._lock:
+            return list(self._storage.values())
 
     def update(
         self, client_id: str, updated_client: ClientRecord
     ) -> ClientRecord | None:
-        if client_id not in self._storage:
-            return None
-        self._storage[client_id] = updated_client
-        return updated_client
+        with self._lock:
+            if client_id not in self._storage:
+                return None
+            self._check_duplicates(updated_client, exclude_id=client_id)
+            self._storage[client_id] = updated_client
+            return updated_client
 
     def delete(self, client_id: str) -> bool:
-        return self._storage.pop(client_id, None) is not None
+        with self._lock:
+            return self._storage.pop(client_id, None) is not None

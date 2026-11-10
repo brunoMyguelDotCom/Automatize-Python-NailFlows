@@ -1,6 +1,18 @@
 from abc import ABC, abstractmethod
 
-from app.domain.models import Appointment, ClientRecord, Service
+from app.domain.models import Appointment, ClientRecord, Service, DuplicateClientError
+
+
+def duplicate_client_error(error) -> DuplicateClientError | None:
+    if not isinstance(error, dict) or error.get("code") != "23505":
+        return None
+    message = error.get("message", "")
+    if not isinstance(message, str):
+        return None
+    for field in ("email", "phone"):
+        if f'"clients_{field}_normalized_key"' in message:
+            return DuplicateClientError(field)
+    return None
 
 
 class BaseDatabase(ABC):
@@ -29,6 +41,10 @@ class BaseDatabase(ABC):
 
 class ClientDatabaseError(RuntimeError):
     """Falha de acesso ao armazenamento de clientes."""
+
+
+class RegistrationDatabaseError(RuntimeError):
+    """Falha de acesso ao armazenamento de convites."""
 
 
 class AppointmentDatabaseError(RuntimeError):

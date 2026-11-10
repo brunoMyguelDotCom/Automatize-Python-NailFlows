@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.infrastructure.calendar.google import CalendarError
+from app.api.security import require_admin
 
 router = APIRouter(prefix="/auth/google", tags=["Google Calendar"])
 
@@ -17,7 +18,7 @@ def get_google(request: Request):
     return calendar
 
 
-@router.get("/connect")
+@router.get("/connect", dependencies=[Depends(require_admin)])
 def connect(google=Depends(get_google)):
     browser_secret = secrets.token_urlsafe(32)
     response = RedirectResponse(google.begin(browser_secret), status_code=302)

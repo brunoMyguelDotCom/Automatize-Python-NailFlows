@@ -47,6 +47,9 @@ API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Cliente
    SUPABASE_URL=seu_url_do_supabase_aqui
    SUPABASE_SECRET_KEY=sua_chave_secreta_do_backend_aqui
 
+   # URL do frontend usada nos links de autocadastro
+   FRONTEND_URL=http://localhost:3000
+
    # Configuração OAuth do Google Agenda
    GOOGLE_CLIENT_ID=seu_google_client_id
    GOOGLE_CLIENT_SECRET=seu_google_client_secret
@@ -61,6 +64,64 @@ API para Nail Designers cadastrarem clientes e gerenciarem agendamentos. Cliente
    Você também pode criar um arquivo `.env` na raiz do projeto com essas variáveis. A aplicação carrega esse arquivo automaticamente, independentemente do diretório de execução, sem sobrescrever variáveis já definidas no ambiente do processo. Mantenha o arquivo fora do controle de versão. A tabela de clientes usa RLS e acesso pelo backend com uma chave secreta (`sb_secret_...`) ou a chave legada `service_role`. A chave permanece no backend. Consulte a [documentação de chaves do Supabase](https://supabase.com/docs/guides/api/api-keys).
 
 ### Executando a Aplicacao
+
+O backend disponibiliza `POST /registration-links` para gerar um convite,
+`GET /registration-links/{token}` para validá-lo e
+`POST /registration-links/{token}/register` para cadastrar a cliente.
+Configure `FRONTEND_URL` com a URL pública do frontend; o padrão de desenvolvimento
+é `http://localhost:3000`. O link gerado aponta para `/cadastro/{token}` nesse frontend.
+A página de cadastro ainda precisa ser implementada. Com as credenciais do
+Supabase configuradas, os convites são salvos em `public.registration_links` e
+o cadastro chama `POST /rest/v1/rpc/register_client_with_invitation`, criando a
+cliente e consumindo o convite na mesma transação. Prepare primeiro a tabela
+`public.clients` (migration 001) e execute a
+[migration 004](app/infrastructure/database/migrations/004_create_registration_links.sql)
+no SQL Editor do Supabase. Use uma chave secreta do backend ou a chave legada
+`service_role`, que possuem as permissões necessárias. Sem credenciais, os
+convites e as clientes ficam em memória e são perdidos ao reiniciar a API.
+No cadastro por convite, espaços nas extremidades dos campos são removidos.
+Nome deve ter entre 2 e 150 caracteres, telefone entre 8 e 30 e o e-mail deve
+ser válido. Campos extras são rejeitados. Dados inválidos retornam `422`,
+sem consumir o convite; links inválidos, expirados ou utilizados retornam `410`.
+Falhas de acesso ao cadastro de clientes retornam `503`.
+Cadastros e atualizações com e-mail ou telefone pertencente a outra cliente
+retornam `409`, com `detail` e `field` (`email` ou `phone`). E-mails são comparados
+sem diferenciar maiúsculas; telefones são comparados por dígitos, considerando
+números brasileiros com DDD equivalentes à versão com código `55`.
+O formato original dos contatos é preservado. Uma tentativa duplicada não
+consome o convite: os dados podem ser corrigidos e reenviados.
+
+Para ativar esse bloqueio no Supabase, execute a
+[migration 005](app/infrastructure/database/migrations/005_unique_client_contacts.sql)
+no SQL Editor após as migrations anteriores e reinicie a API atualizada.
+Os índices únicos bloqueiam duplicidades inclusive em gravações simultâneas e
+na função de cadastro por convite. Se já houver duplicidades, a migration aborta
+sem excluir ou mesclar registros. O final do arquivo contém consultas para
+localizá-las; revise os registros e resolva os conflitos antes de executar novamente.
+Sem a migration 005, o banco Supabase ainda permite contatos duplicados.
+As rotas de clientes, agendamentos, serviços, geração de convites e
+`GET /auth/google/connect` exigem autenticação administrativa.
+Configure no `.env` uma credencial exclusiva para o backend:
+
+```env
+ADMIN_API_TOKEN=cole_aqui_um_token_aleatorio_longo
+```
+
+Gere o valor com `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+Envie `Authorization: Bearer SEU_TOKEN` nas chamadas administrativas.
+Em `/docs`, use **Authorize → AdminToken** e informe apenas o token.
+Sem configuração, essas rotas retornam `503`; credenciais ausentes ou incorretas
+retornam `401`. A validação do convite e o cadastro por token continuam públicos.
+O callback OAuth do Google continua público e verifica o estado e o cookie do fluxo.
+Para iniciar a conexão Google, um cliente administrativo deve enviar o cabeçalho
+a `/auth/google/connect` e preservar o cookie recebido durante o redirecionamento.
+Abrir diretamente essa URL na barra do navegador não envia o token administrativo.
+
+Use HTTPS em produção. Essa credencial compartilhada é para integrações confiáveis:
+não a inclua no código do frontend público, na URL ou nos links de convite.
+O futuro painel web precisará de autenticação de usuários ou de um backend
+intermediário que mantenha essa credencial no servidor. Para revogá-la,
+altere `ADMIN_API_TOKEN` no ambiente e reinicie a API.
 
 Inicie o servidor usando:
 ```bash
@@ -206,6 +267,34 @@ python -m unittest discover -s tests -v
 ```
 
 Os testes verificam o CRUD de clientes, atualizações parciais, validações, campos gerados pelo servidor e compatibilidade com os agendamentos. As chamadas ao Supabase são simuladas nos testes, sem necessidade de credenciais ou acesso a um banco real.
+
+Para executar somente os testes de convites:
+
+```bash
+python -m unittest discover -s tests -p 'test_registration*.py' -v
+```
+
+A cobertura inclui geração de links distintos, hash armazenado, validade de seis
+horas, limite exato da expiração, reutilização, validação de formulário, falhas
+ao salvar o convite ou a cliente e nova tentativa após falha. A concorrência é
+verificada entre serviços e por HTTP: somente uma tentativa cadastra a cliente.
+Esses testes usam o repositório em memória dentro de um único processo.
+Um teste com subprocesso confirma que os convites em memória não sobrevivem ao
+encerramento do processo. Isso documenta uma limitação, sem atestar persistência.
+Os testes REST e RPC usam respostas simuladas e verificam os parâmetros, a
+autenticação, a seleção do backend e os erros retornados pelo Supabase.
+A persistência e a concorrência no PostgreSQL real ainda precisam ser verificadas
+em um banco de testes com as migrations aplicadas.
+
+Para verificar a persistência manualmente nesse banco: gere um convite com
+`POST /registration-links` usando o token administrativo, guarde a URL e reinicie
+a API mantendo as credenciais do mesmo projeto Supabase. A consulta
+`GET /registration-links/{token}` deve continuar retornando `200`. Envie nome,
+e-mail e telefone a `POST /registration-links/{token}/register`; a primeira
+tentativa deve retornar `201` e a reutilização deve retornar `410`, inclusive
+após outro reinício. Esse procedimento cria uma cliente no banco escolhido.
+Se a requisição RPC sofrer timeout, consulte o estado do convite antes de tentar
+novamente: a transação pode ter sido concluída mesmo sem a resposta chegar à API.
 
 ## Aviso de Segurança
 Credenciais sensíveis (`.env`) são gerenciadas via `.gitignore`. Nunca envie suas chaves para o repositório.
