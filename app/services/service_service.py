@@ -42,8 +42,11 @@ class ServiceService:
         Implementa a deleção lógica (soft delete).
         Em vez de remover do banco, define o serviço como inativo.
         """
+        # A ausência do serviço é um resultado esperado da API (404), não uma
+        # falha de acesso ao banco. Mantemos a busca fora do bloco amplo para
+        # não transformar HTTPException em 503.
+        service = self.get_service(service_id)
         try:
-            service = self.get_service(service_id)
             # Atualiza apenas o campo 'active' para False
             updated_service = Service(**{**service.model_dump(), "active": False})
             saved = self.db.update(service_id, updated_service)

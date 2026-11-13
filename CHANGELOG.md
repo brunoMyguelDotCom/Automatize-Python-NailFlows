@@ -3,6 +3,21 @@
 Alterações relevantes do NailFlows API. A versão da aplicação é extraída da
 primeira versão semântica encontrada neste arquivo.
 
+## [1.4.1] - 2026-11-12
+
+### Changed
+
+- README atualizado para refletir os comandos disponíveis, o modo em memória, o
+  keepalive e as configurações de execução e deploy.
+- Documentada a matriz de erros HTTP, incluindo os formatos de resposta e a
+  proteção contra exposição de detalhes internos de banco e Google Calendar.
+- Descrição da exclusão de serviços alinhada ao comportamento real de soft delete.
+
+### Fixed
+
+- Exclusão de serviço inexistente volta a retornar `404` em vez de converter o
+  erro esperado em `503`.
+
 ## [1.4.0] - 2026-11-10
 
 ### Added

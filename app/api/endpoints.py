@@ -171,7 +171,7 @@ def update_service(id: str, service_data: ServiceUpdate, service: ServiceService
 @service_router.delete(
     "/{id}",
     summary="Deletar serviço",
-    description="Remove um serviço do sistema. Bloqueado se houver agendamentos vinculados.",
+    description="Inativa logicamente um serviço; o registro permanece disponível para consulta.",
 )
 def delete_service(id: str, service: ServiceServiceDep):
     success = service.delete_service(id)

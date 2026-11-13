@@ -130,27 +130,34 @@ notify pgrst, 'reload schema';
 O backend usa a chave secreta do Supabase para acessar as tabelas protegidas por
 RLS. As migrations concedem as permissões ao papel `service_role`.
 
+Quando o Supabase não está configurado, clientes e agendamentos usam memória.
+Nesse modo, o CRUD de serviços não fica disponível e a criação de agendamento
+precisa receber `duration_minutes` explicitamente; a existência e o status de
+`service_id` só são validados com o banco de serviços configurado.
+
 ## Executar a API
 
-Para executar a aplicação com o gate de testes:
+Para validar a aplicação antes de iniciar o servidor:
 
 ```bash
-python scripts/start.py
+PYTHON_DOTENV_DISABLED=1 python -m unittest discover -s tests -v
 ```
 
-O comando executa toda a suíte antes de iniciar o Uvicorn. Se algum teste falhar,
-o processo termina e a API não é disponibilizada. Localmente, a API fica em
-`http://127.0.0.1:8000` e o Swagger em `http://127.0.0.1:8000/docs`.
+O projeto não contém `scripts/start.py`; o comando acima executa somente a suíte.
+Se os testes passarem, inicie a API em outro terminal com:
 
-Para iniciar somente o servidor, sem o gate, use `python main.py` apenas para
-diagnóstico local. Em produção, não use esse caminho.
+```bash
+python main.py
+```
+
+Localmente, a API fica em `http://127.0.0.1:8000` e o Swagger em
+`http://127.0.0.1:8000/docs`.
+
+Em produção, use o comando de inicialização da plataforma para executar o
+Uvicorn; `python main.py` é adequado para desenvolvimento e diagnóstico local.
 
 No Render, configure `PYTHON_VERSION=3.13.5` ou outra versão 3.13 disponível
-na plataforma. Para Render ou outra plataforma que forneça a variável `PORT`, use:
-
-```bash
-python scripts/start.py
-```
+na plataforma e use o comando de inicialização configurado para o serviço.
 
 Configure também `SUPABASE_URL`, `SUPABASE_SECRET_KEY` e `ADMIN_API_TOKEN` no
 painel da hospedagem. Não dependa de um `.env` local no servidor.
@@ -254,8 +261,8 @@ Para ativar ou inativar manualmente:
 {"active": false}
 ```
 
-O keepalive é público, não exige token e consulta o Supabase. Uma resposta
-`503` indica falha de configuração ou acesso ao banco.
+O keepalive é público, não exige token e consulta o banco de serviços. Uma
+resposta `503` indica que o banco não está configurado ou não pôde ser acessado.
 
 ### Agendamentos
 
@@ -279,9 +286,10 @@ Corpo de criação/atualização:
 }
 ```
 
-`client_id` e `service_id` precisam existir. Se `duration_minutes` for omitido,
-a duração do serviço será usada. Serviços inativos não podem ser usados em novos
-agendamentos. Datas passadas e horários sobrepostos retornam `400`.
+Com o Supabase configurado, `client_id` e `service_id` precisam existir. Se
+`duration_minutes` for omitido, a duração do serviço será usada. Serviços
+inativos não podem ser usados em novos agendamentos. Datas passadas e horários
+sobrepostos retornam `400`.
 
 O `DELETE` é soft delete: não remove a linha e grava `active=false`. Quando o
 agendamento possui evento Google, o evento é excluído antes da atualização do
@@ -345,16 +353,37 @@ Falhas OAuth registram `phase=credentials_load`, tipo da exceção e caminho do
 arquivo de token, sem registrar tokens ou segredos. A mensagem HTTP de falha do
 Google é separada de falhas do Supabase.
 
+## Tratamento de erros
+
+As respostas de erro usam o formato FastAPI `{"detail": "..."}`. Os casos
+previstos pelas rotas são:
+
+| Status | Quando ocorre |
+| --- | --- |
+| `400` | Regra de negócio inválida: data passada, conflito de horário, cliente/serviço inexistente, serviço inativo, ausência de evento Google ou autorização OAuth inválida. |
+| `401` | Header `Authorization` ausente ou token administrativo inválido. |
+| `409` | E-mail ou telefone já cadastrado; a resposta também informa `field` como `email` ou `phone`. |
+| `410` | Convite inválido, expirado ou já utilizado. |
+| `422` | Corpo ou parâmetros rejeitados pela validação dos modelos Pydantic. |
+| `503` | Supabase, banco de serviços, convites ou Google Calendar indisponível; também ocorre quando a autenticação administrativa não foi configurada. |
+| `404` | Cliente, serviço ou agendamento não encontrado. |
+| `500` | Falha interna inesperada não classificada; detalhes da exceção não fazem parte da resposta pública. |
+
+Falhas de banco são registradas internamente e convertidas em mensagens genéricas
+pelos handlers de `main.py`, sem devolver credenciais, SQL ou detalhes privados.
+Falhas do Google retornam `503` com uma orientação segura, como reconectar a
+agenda. O cancelamento de agendamento só marca `active=false` depois que a
+exclusão do evento Google e a atualização do banco terminam com sucesso.
+
 ## Testes
 
 ```bash
-python -m unittest discover -s tests -v
+PYTHON_DOTENV_DISABLED=1 python -m unittest discover -s tests -v
 ```
 
-O comando `python scripts/start.py` executa exatamente essa suíte antes de cada
-inicialização. Durante os testes, `PYTHON_DOTENV_DISABLED=1` impede que o `.env`
-local ou as credenciais de produção sejam carregados. Os testes usam memória e
-chamadas HTTP simuladas; não devem acessar Supabase ou Google reais.
+Durante os testes, `PYTHON_DOTENV_DISABLED=1` impede que o `.env` local ou as
+credenciais de produção sejam carregados. Os testes usam memória e chamadas HTTP
+simuladas; não devem acessar Supabase ou Google reais.
 
 Para executar uma família específica:
 
