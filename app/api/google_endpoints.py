@@ -18,7 +18,7 @@ def get_google(request: Request):
     return calendar
 
 
-@router.get("/connect", dependencies=[Depends(require_admin)])
+@router.get("/connect")
 def connect(google=Depends(get_google)):
     browser_secret = secrets.token_urlsafe(32)
     response = RedirectResponse(google.begin(browser_secret), status_code=302)

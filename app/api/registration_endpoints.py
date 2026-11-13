@@ -7,7 +7,6 @@ from fastapi import (
 
 from app.domain.models import ClientRegistrationRequest
 from app.domain.models import RegistrationLinkError
-from app.api.security import require_admin
 
 from app.services.registration_service import (
     RegistrationService,
@@ -25,7 +24,7 @@ def get_registration_service():
     )
 
 
-@router.post("", status_code=201, dependencies=[Depends(require_admin)])
+@router.post("", status_code=201)
 def create_link(
     service: RegistrationService = Depends(
         get_registration_service

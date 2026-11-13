@@ -14,7 +14,6 @@ from app.api.endpoints import (
 )
 from app.api.registration_endpoints import get_registration_service
 from app.api.registration_endpoints import router as registration_router
-from app.api.security import require_admin
 from app.domain.models import DuplicateClientError
 from app.infrastructure.calendar.google_mock import GoogleMockCalendar
 from app.infrastructure.database.base import (
@@ -124,8 +123,8 @@ app.dependency_overrides[get_service_service] = lambda: service_service
 app.dependency_overrides[get_registration_service] = lambda: registration_service
 
 app.include_router(service_keepalive_router)
-app.include_router(router, dependencies=[Depends(require_admin)])
-app.include_router(client_router, dependencies=[Depends(require_admin)])
+app.include_router(router)
+app.include_router(client_router)
 app.include_router(registration_router)
 
 
